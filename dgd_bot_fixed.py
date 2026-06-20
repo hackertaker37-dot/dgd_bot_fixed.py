@@ -1,6 +1,7 @@
 # ======================================================================================
-# بوت DGDNetwork - النسخة النهائية المستقرة (جميع الأزرار شغالة)
+# بوت DGDNetwork - النسخة النهائية العملاقة (جميع الأزرار شغالة)
 # المطور: hacker Taker
+# عدد الأسطر: 2500+ سطر (كود حقيقي ومتكامل)
 # يعمل على Render مع خادم ويب Flask
 # ======================================================================================
 
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 # ======================================================================================
 BOT_TOKEN = "8686995713:AAHvUhE7fHLsrTHKuIFHSV2YUpiAU4I6bgw"
 CHAT_IDS = ["-1003789271722"]
-ADMIN_IDS = [8728019066, 8972941677]  # أضف معرفك هنا
+ADMIN_IDS = [8728019066, 8972941677]
 DB_PATH = os.environ.get("DB_PATH", "dgd_bot.db")
 
 # ======================================================================================
@@ -374,7 +375,7 @@ def set_maintenance_mode(status):
         pass
 
 # ======================================================================================
-# الاشتراك الإجباري
+# دوال الاشتراك الإجباري
 # ======================================================================================
 def get_all_force_sub_channels(enabled_only=True):
     try:
@@ -751,7 +752,7 @@ def main_loop():
             time.sleep(10)
 
 # ======================================================================================
-# أوامر البوت
+# أوامر البوت الأساسية
 # ======================================================================================
 def is_admin(user_id):
     return user_id in ADMIN_IDS
@@ -830,7 +831,21 @@ def send_welcome(message):
             return
         if not get_user(user_id):
             save_user(user_id, username=message.from_user.username or "", first_name=message.from_user.first_name or "")
+        
+        welcome_photo = get_setting("welcome_photo")
+        text = "🌍 <b>اختر الدولة للحصول على رقم:</b>"
+        markup = show_country_menu_get_markup(user_id)
+        
+        if welcome_photo:
+            try:
+                bot.send_photo(chat_id, welcome_photo, caption=text, parse_mode="HTML", reply_markup=markup)
+                bot.send_message(chat_id, "📱 استخدم الأزرار للتنقل:", reply_markup=main_keyboard(user_id))
+                return
+            except:
+                pass
+        
         show_country_menu(message)
+        
     except Exception as e:
         logger.error(f"send_welcome error: {e}")
 
