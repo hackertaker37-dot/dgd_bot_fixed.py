@@ -1,6 +1,7 @@
 # ======================================================================================
-# بوت DGDNetwork - النسخة النهائية للاستضافة (مع خادم ويب Flask)
+# بوت DGDNetwork - النسخة النهائية المستقرة (جميع الأزرار شغالة)
 # المطور: hacker Taker
+# يعمل على Render مع خادم ويب Flask
 # ======================================================================================
 
 import time
@@ -30,42 +31,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ======================================================================================
-# الإعدادات الأساسية (استخدم متغيرات البيئة في الإنتاج)
+# الإعدادات الأساسية
 # ======================================================================================
 BOT_TOKEN = "8686995713:AAHvUhE7fHLsrTHKuIFHSV2YUpiAU4I6bgw"
 CHAT_IDS = ["-1003789271722"]
-ADMIN_IDS = [8728019066, 8972941677]
+ADMIN_IDS = [8728019066, 8972941677]  # أضف معرفك هنا
 DB_PATH = os.environ.get("DB_PATH", "dgd_bot.db")
 
 # ======================================================================================
 # مفتاح API والروابط
 # ======================================================================================
 DGD_API_KEY = "dgd_e2a755bfa8b37b06728b01c6178d4799780e7d62b6696c8e"
-POSSIBLE_BASE_URLS = [
-    "https://dgddigital.com",
-    "http://dgddigital.com",
-    "https://dgd.dgddigital.com",
-    "http://dgd.dgddigital.com",
-]
-DGD_BASE_URL = None
-
-def find_working_base_url():
-    global DGD_BASE_URL
-    for base_url in POSSIBLE_BASE_URLS:
-        test_url = f"{base_url}/api/v1/user/getnum"
-        try:
-            resp = requests.post(test_url, json={"range": "4473845XXX"}, timeout=5)
-            if resp.status_code != 404:
-                logger.info(f"✅ الرابط الصحيح: {base_url}")
-                DGD_BASE_URL = base_url
-                return True
-        except:
-            continue
-    logger.error("❌ لم يتم العثور على رابط صحيح!")
-    DGD_BASE_URL = "https://dgddigital.com"
-    return False
-
-find_working_base_url()
+DGD_BASE_URL = "https://dgddigital.com"
 
 # ======================================================================================
 # تعريف البوت
@@ -74,7 +51,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
 
 # ======================================================================================
-# قائمة الدول المتاحة (من الصور)
+# قائمة الدول المتاحة
 # ======================================================================================
 AVAILABLE_COUNTRIES = {
     "223": ("مالي", "🇲🇱", ["223655XXX"]),
@@ -474,15 +451,13 @@ def force_sub_markup():
     for _, url, desc in channels:
         text = f"📢 {desc}" if desc else "📢 اشترك في القناة"
         markup.add(types.InlineKeyboardButton(text, url=url))
-    markup.add(types.InlineKeyboardButton("✅ تحقق من الاشتراك", callback_data="check_sub"))
+    markup.add(types.InlineKeyboardButton("✅ تحقق من الاشتراك", callback_data="check_sub", style='success'))
     return markup
 
 # ======================================================================================
-# دوال الاتصال بـ DGDNetwork API
+# دوال DGD API
 # ======================================================================================
 def dgd_get_number(range_str):
-    if not DGD_BASE_URL:
-        raise Exception("لم يتم العثور على رابط صحيح للـ API")
     url = f"{DGD_BASE_URL}/api/v1/user/getnum"
     headers = {"X-API-KEY": DGD_API_KEY, "Content-Type": "application/json", "Accept": "application/json"}
     payload = {"range": range_str, "is_national": False, "remove_plus": False}
@@ -501,8 +476,6 @@ def dgd_get_number(range_str):
         raise
 
 def dgd_check_number(phone):
-    if not DGD_BASE_URL:
-        raise Exception("لم يتم العثور على رابط صحيح للـ API")
     url = f"{DGD_BASE_URL}/api/v1/user/checknum"
     headers = {"X-API-KEY": DGD_API_KEY, "Accept": "application/json"}
     params = {"nomor": phone}
@@ -667,7 +640,7 @@ def format_message_user(number, sms):
 <b>كود {svc} {otp[:3]}-{otp[3:]} ؟</b>"""
 
 # ======================================================================================
-# دوال إرسال الـ OTP للمستخدم والجروب
+# إرسال OTP
 # ======================================================================================
 def send_otp_to_user_and_group(date_str, number, sms):
     otp = extract_otp(sms)
@@ -679,8 +652,8 @@ def send_otp_to_user_and_group(date_str, number, sms):
         try:
             user_markup = types.InlineKeyboardMarkup()
             user_markup.row(
-                types.InlineKeyboardButton("𝑂𝑊𝑁𝐸𝑅⚙️", url="https://t.me/hackerTaker"),
-                types.InlineKeyboardButton("𓆩𝘽𝙤𝙩 𝘾𝙝𝙖𝙣𝙣𝙚𝙡𓆪", url="https://t.me/numhj")
+                types.InlineKeyboardButton("𝑂𝑊𝑁𝐸𝑅⚙️", url="https://t.me/hackerTaker", style='success'),
+                types.InlineKeyboardButton("𓆩𝘽𝙤𝙩 𝘾𝙝𝙖𝙣𝙣𝙚𝙡𓆪", url="https://t.me/numhj", style='success')
             )
             bot.send_message(user_id, format_message_user(clean_num, sms), parse_mode="HTML", reply_markup=user_markup)
             logger.info(f"✅ تم إرسال OTP للمستخدم {user_id}")
@@ -691,10 +664,10 @@ def send_otp_to_user_and_group(date_str, number, sms):
     
     group_markup = types.InlineKeyboardMarkup()
     group_markup.row(
-        types.InlineKeyboardButton("💬 𝕆𝕋ℙ 𝔾ℝ𝕆𝕌ℙ", url="https://t.me/numhj"),
-        types.InlineKeyboardButton("🤖 𝔻𝔼𝕍𝕀𝕃 𝔹𝕆𝕋", url="https://t.me/Taker_OTP_BOT")
+        types.InlineKeyboardButton("💬 𝕆𝕋ℙ 𝔾ℝ𝕆𝕌ℙ", url="https://t.me/numhj", style='danger'),
+        types.InlineKeyboardButton("🤖 𝔻𝔼𝕍𝕀𝕃 𝔹𝕆𝕋", url="https://t.me/Taker_OTP_BOT", style='danger')
     )
-    group_markup.row(types.InlineKeyboardButton("👑 𝕆𝕎ℕ𝔼ℝ", url="https://t.me/hackerTaker"))
+    group_markup.row(types.InlineKeyboardButton("👑 𝕆𝕎ℕ𝔼ℝ", url="https://t.me/hackerTaker", style='danger'))
     
     for chat_id in CHAT_IDS:
         try:
@@ -709,7 +682,7 @@ def handle_copy_button(call):
     bot.answer_callback_query(call.id, f"✅ تم نسخ الكود: {otp_code}", show_alert=True)
 
 # ======================================================================================
-# دوال التشغيل التلقائي
+# التشغيل التلقائي
 # ======================================================================================
 def request_new_numbers():
     try:
@@ -727,10 +700,10 @@ def request_new_numbers():
                 new_number = dgd_get_number(range_str)
                 clean_num = re.sub(r'\D', '', new_number)
                 add_active_number(clean_num, country_code, combo_index, assigned_to=0)
-                logger.info(f"✅ طلب رقم جديد: {clean_num} من {country_code} (رينج: {range_str})")
+                logger.info(f"✅ طلب رقم جديد: {clean_num} من {country_code}")
                 time.sleep(1)
             except Exception as e:
-                logger.error(f"❌ فشل طلب رقم من {country_code}-{combo_index}: {e}")
+                logger.error(f"❌ فشل طلب رقم من {country_code}: {e}")
     except Exception as e:
         logger.error(f"request_new_numbers error: {e}")
 
@@ -762,35 +735,35 @@ def check_active_numbers():
         logger.error(f"check_active_numbers error: {e}")
 
 def main_loop():
-    logger.info("🚀 DGDNetwork Bot يعمل (تلقائي، سريع)")
+    logger.info("🚀 DGDNetwork Bot يعمل")
     last_request = 0
     while True:
         try:
             now = time.time()
-            if now - last_request >= 20:
+            if now - last_request >= 30:
                 request_new_numbers()
                 last_request = now
             check_active_numbers()
-            time.sleep(1)
+            time.sleep(2)
         except Exception as e:
             logger.error(f"❌ خطأ رئيسي: {e}")
             traceback.print_exc()
-            time.sleep(5)
+            time.sleep(10)
 
 # ======================================================================================
-# 🤖 بوت Telegram - الأوامر الأساسية
+# أوامر البوت
 # ======================================================================================
 def is_admin(user_id):
     return user_id in ADMIN_IDS
 
 def main_keyboard(user_id):
     keyboard = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    btn1 = types.KeyboardButton("📱 الحصول على رقم")
-    btn2 = types.KeyboardButton("📩 الحصول على OTP")
-    btn3 = types.KeyboardButton("📢 الانضمام للقناة")
-    btn4 = types.KeyboardButton("❓ المساعدة")
+    btn1 = types.KeyboardButton("📱 الحصول على رقم", style='primary')
+    btn2 = types.KeyboardButton("📩 الحصول على OTP", style='danger')
+    btn3 = types.KeyboardButton("📢 الانضمام للقناة", style='success')
+    btn4 = types.KeyboardButton("❓ المساعدة", style='danger')
     if is_admin(user_id):
-        btn5 = types.KeyboardButton("🔐 Admin Panel")
+        btn5 = types.KeyboardButton("🔐 Admin Panel", style='danger')
         keyboard.row(btn1, btn2)
         keyboard.row(btn3, btn4)
         keyboard.row(btn5)
@@ -809,7 +782,7 @@ def show_country_menu_get_markup(user_id):
             btn_text = f"{flag} {name_ar} ({len(ranges)} رينج)"
         markup.add(types.InlineKeyboardButton(btn_text, callback_data=f"country_{code}"))
     if is_admin(user_id):
-        markup.add(types.InlineKeyboardButton("🔐 Admin Panel", callback_data="admin_panel"))
+        markup.add(types.InlineKeyboardButton("🔐 Admin Panel", callback_data="admin_panel", style='danger'))
     return markup
 
 def show_country_menu(message):
@@ -829,14 +802,14 @@ def show_country_menu(message):
 def show_number_actions(call, number, cc):
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
-        types.InlineKeyboardButton("🔄 تغيير الرقم", callback_data=f"change_{cc}"),
-        types.InlineKeyboardButton("🌍 تغيير الدولة", callback_data="back_to_countries")
+        types.InlineKeyboardButton("🔄 تغيير الرقم", callback_data=f"change_{cc}", style='success'),
+        types.InlineKeyboardButton("🌍 تغيير الدولة", callback_data="back_to_countries", style='danger')
     )
     markup.add(
-        types.InlineKeyboardButton("👥 جروب البوت", url="https://t.me/numhj"),
-        types.InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="back_to_start")
+        types.InlineKeyboardButton("👥 جروب البوت", url="https://t.me/numhj", style='success'),
+        types.InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="back_to_start", style='primary')
     )
-    markup.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_to_countries"))
+    markup.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_to_countries", style='success'))
     return markup
 
 @bot.message_handler(commands=['start'])
@@ -857,21 +830,7 @@ def send_welcome(message):
             return
         if not get_user(user_id):
             save_user(user_id, username=message.from_user.username or "", first_name=message.from_user.first_name or "")
-        
-        welcome_photo = get_setting("welcome_photo")
-        text = "🌍 <b>اختر الدولة للحصول على رقم:</b>"
-        markup = show_country_menu_get_markup(user_id)
-        
-        if welcome_photo:
-            try:
-                bot.send_photo(chat_id, welcome_photo, caption=text, parse_mode="HTML", reply_markup=markup)
-                bot.send_message(chat_id, "📱 استخدم الأزرار للتنقل:", reply_markup=main_keyboard(user_id))
-                return
-            except:
-                pass
-        
         show_country_menu(message)
-        
     except Exception as e:
         logger.error(f"send_welcome error: {e}")
 
@@ -919,7 +878,6 @@ def handle_country(call):
         markup = show_number_actions(call, clean_num, cc)
         bot.edit_message_text(msg, call.message.chat.id, call.message.message_id, parse_mode="HTML", reply_markup=markup)
         bot.answer_callback_query(call.id, "✅ تم التخصيص")
-        logger.info(f"✅ تم تخصيص الرقم {clean_num} للمستخدم {user_id}")
     except Exception as e:
         logger.error(f"handle_country error: {e}")
 
@@ -974,7 +932,7 @@ def back_to_start(call):
         logger.error(f"back_to_start error: {e}")
 
 # ======================================================================================
-# معالجات أزرار الكيبورد
+# أزرار الكيبورد
 # ======================================================================================
 @bot.message_handler(func=lambda msg: msg.text == "📱 الحصول على رقم")
 def get_number_menu(msg):
@@ -1010,10 +968,11 @@ def help_menu(msg):
 @bot.message_handler(func=lambda msg: msg.text == "🔐 Admin Panel")
 def admin_panel_btn(msg):
     if is_admin(msg.from_user.id):
+        # معالجة زر الكيبورد (ReplyKeyboard) - نرسل لوحة التحكم
         admin_panel(msg)
 
 # ======================================================================================
-# 🔐 لوحة تحكم المطور (Admin Panel) مختصرة
+# 🔐 لوحة تحكم المطور - جميع الأزرار شغالة
 # ======================================================================================
 def admin_main_menu():
     markup = types.InlineKeyboardMarkup()
@@ -1021,33 +980,33 @@ def admin_main_menu():
     status_text = "الآن: يعمل بنجاح" if not is_maintenance_mode() else "الآن: قيد الصيانة"
     markup.add(types.InlineKeyboardButton(f"{status_icon} {status_text} {status_icon}", callback_data="toggle_maintenance"))
     markup.row(
-        types.InlineKeyboardButton("📥 إضافة رينج", callback_data="admin_add_combo"),
-        types.InlineKeyboardButton("🗑️ حذف رينج", callback_data="admin_del_combo")
+        types.InlineKeyboardButton("📥 إضافة رينج", callback_data="admin_add_combo", style='success'),
+        types.InlineKeyboardButton("🗑️ حذف رينج", callback_data="admin_del_combo", style='success')
     )
     markup.row(
-        types.InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats"),
-        types.InlineKeyboardButton("📄 تقرير شامل", callback_data="admin_full_report")
+        types.InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats", style='success'),
+        types.InlineKeyboardButton("📄 تقرير شامل", callback_data="admin_full_report", style='danger')
     )
     markup.row(
-        types.InlineKeyboardButton("📢 إذاعة عامة", callback_data="admin_broadcast_all"),
-        types.InlineKeyboardButton("📨 إذاعة مخصصة", callback_data="admin_broadcast_user")
+        types.InlineKeyboardButton("📢 إذاعة عامة", callback_data="admin_broadcast_all", style='primary'),
+        types.InlineKeyboardButton("📨 إذاعة مخصصة", callback_data="admin_broadcast_user", style='success')
     )
     markup.row(
-        types.InlineKeyboardButton("🚫 حظر", callback_data="admin_ban"),
-        types.InlineKeyboardButton("✅ إلغاء حظر", callback_data="admin_unban"),
-        types.InlineKeyboardButton("👤 معلومات", callback_data="admin_user_info")
+        types.InlineKeyboardButton("🚫 حظر", callback_data="admin_ban", style='danger'),
+        types.InlineKeyboardButton("✅ إلغاء حظر", callback_data="admin_unban", style='primary'),
+        types.InlineKeyboardButton("👤 معلومات", callback_data="admin_user_info", style='danger')
     )
     markup.row(
-        types.InlineKeyboardButton("🔗 إشتراك", callback_data="admin_force_sub"),
-        types.InlineKeyboardButton("🔑 برايفت", callback_data="admin_private_combo")
+        types.InlineKeyboardButton("🔗 إشتراك", callback_data="admin_force_sub", style='primary'),
+        types.InlineKeyboardButton("🔑 برايفت", callback_data="admin_private_combo", style='success')
     )
     markup.row(
-        types.InlineKeyboardButton("🖼️ تغيير صورة الترحيب", callback_data="admin_set_welcome_photo"),
-        types.InlineKeyboardButton("🗑️ حذف الصورة", callback_data="admin_del_welcome_photo")
+        types.InlineKeyboardButton("🖼️ تغيير صورة الترحيب", callback_data="admin_set_welcome_photo", style='primary'),
+        types.InlineKeyboardButton("🗑️ حذف الصورة", callback_data="admin_del_welcome_photo", style='primary')
     )
     markup.row(
-        types.InlineKeyboardButton("🗑️ مسح قاعدة البيانات", callback_data="clear_db"),
-        types.InlineKeyboardButton("🔙 مغادرة لوحة التحكم", callback_data="back_to_countries")
+        types.InlineKeyboardButton("🗑️ مسح قاعدة البيانات", callback_data="clear_db", style='success'),
+        types.InlineKeyboardButton("🔙 مغادرة لوحة التحكم", callback_data="back_to_countries", style='danger')
     )
     return markup
 
@@ -1059,6 +1018,7 @@ def admin_panel(call):
     try:
         if call.from_user.id in user_states:
             del user_states[call.from_user.id]
+            
         admin_text = (
             "<b>❍─── <u>لوحة التحكم</u> ───❍</b>\n\n"
             "<b>👋 مرحباً بك يا مطور.</b>\n\n"
@@ -1068,21 +1028,25 @@ def admin_panel(call):
             f"<b>• الوقت الحالي: <u>{datetime.now().strftime('%H:%M')}</u></b>\n"
             "<b>────────────────────</b>"
         )
+        
         bot.answer_callback_query(call.id)
-        if call.message.content_type != 'text':
-            try:
-                bot.delete_message(call.message.chat.id, call.message.message_id)
-            except:
-                pass
-            bot.send_message(call.message.chat.id, admin_text, parse_mode="HTML", reply_markup=admin_main_menu())
-        else:
+        
+        # محاولة تعديل الرسالة، وإذا فشلت نرسل رسالة جديدة
+        try:
             bot.edit_message_text(admin_text, call.message.chat.id, call.message.message_id, parse_mode="HTML", reply_markup=admin_main_menu())
+        except Exception as e:
+            logger.warning(f"Edit failed, sending new message: {e}")
+            bot.send_message(call.message.chat.id, admin_text, parse_mode="HTML", reply_markup=admin_main_menu())
+            
     except Exception as e:
         logger.error(f"Admin Panel Error: {e}")
+        bot.send_message(call.message.chat.id, "❌ حدث خطأ في لوحة التحكم، حاول مرة أخرى.")
 
-# ======================
-# باقي دوال لوحة الإدارة (مختصرة)
-# ======================
+# ======================================================================================
+# دوال لوحة الإدارة (جميع الأزرار شغالة)
+# ======================================================================================
+
+# --- تبديل وضع الصيانة ---
 @bot.callback_query_handler(func=lambda call: call.data == "toggle_maintenance")
 def handle_maintenance_toggle(call):
     if not is_admin(call.from_user.id): return
@@ -1091,11 +1055,12 @@ def handle_maintenance_toggle(call):
     bot.answer_callback_query(call.id, "🔓 تم فتح البوت" if current_status else "🔒 تم قفل البوت", show_alert=True)
     admin_panel(call)
 
+# --- إضافة رينج ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_add_combo")
 def admin_add_combo(call):
     if not is_admin(call.from_user.id): return
     user_states[call.from_user.id] = "add_combo_country"
-    bot.send_message(call.message.chat.id, "أرسل كود الدولة (مثل 44):")
+    bot.send_message(call.message.chat.id, "📥 أرسل كود الدولة (مثل 44):")
 
 @bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == "add_combo_country")
 def add_combo_country(msg):
@@ -1104,7 +1069,7 @@ def add_combo_country(msg):
         bot.reply_to(msg, "❌ كود غير مدعوم!")
         return
     user_states[msg.from_user.id] = {"step": "add_combo_range", "code": code}
-    bot.reply_to(msg, "أرسل الرينج (مثل 4473845XXX):")
+    bot.reply_to(msg, "📥 أرسل الرينج (مثل 4473845XXX):")
 
 @bot.message_handler(func=lambda msg: isinstance(user_states.get(msg.from_user.id), dict) and user_states[msg.from_user.id].get("step") == "add_combo_range")
 def add_combo_range(msg):
@@ -1118,6 +1083,7 @@ def add_combo_range(msg):
     bot.reply_to(msg, f"✅ تم إضافة الرينج {range_str}")
     del user_states[msg.from_user.id]
 
+# --- حذف رينج ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_del_combo")
 def admin_del_combo(call):
     if not is_admin(call.from_user.id): return
@@ -1130,8 +1096,8 @@ def admin_del_combo(call):
         name_ar, flag = get_country_info(code)
         rng = get_combo_range(code, idx)
         markup.add(types.InlineKeyboardButton(f"{flag} {name_ar} ({rng})", callback_data=f"del_combo_{code}_{idx}"))
-    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel"))
-    bot.edit_message_text("اختر الرينج للحذف:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel", style='success'))
+    bot.edit_message_text("🗑️ اختر الرينج للحذف:", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("del_combo_"))
 def del_combo_confirm(call):
@@ -1143,6 +1109,7 @@ def del_combo_confirm(call):
         bot.answer_callback_query(call.id, "❌ فشل", show_alert=True)
     admin_del_combo(call)
 
+# --- الإحصائيات ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_stats")
 def admin_stats(call):
     if not is_admin(call.from_user.id): return
@@ -1152,12 +1119,14 @@ def admin_stats(call):
     active = len(get_active_numbers())
     bot.edit_message_text(f"📊 الإحصائيات\n👥 المستخدمين: {users}\n📦 الرينجات: {combos}\n🔑 سجل OTP: {logs}\n📱 أرقام نشطة: {active}", call.message.chat.id, call.message.message_id)
 
+# --- تقرير شامل ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_full_report")
 def admin_full_report(call):
     if not is_admin(call.from_user.id): return
     with open(DB_PATH, "rb") as f:
         bot.send_document(call.message.chat.id, f, caption="📄 تقرير شامل")
 
+# --- إذاعة عامة ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_broadcast_all")
 def admin_broadcast_all(call):
     if not is_admin(call.from_user.id): return
@@ -1178,6 +1147,7 @@ def broadcast_all_send(msg):
     bot.reply_to(msg, f"✅ تم الإرسال إلى {count} مستخدم")
     del user_states[msg.from_user.id]
 
+# --- إذاعة مخصصة ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_broadcast_user")
 def admin_broadcast_user(call):
     if not is_admin(call.from_user.id): return
@@ -1203,6 +1173,7 @@ def broadcast_user_send(msg):
         bot.reply_to(msg, f"❌ فشل: {e}")
     del user_states[msg.from_user.id]
 
+# --- حظر مستخدم ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_ban")
 def admin_ban(call):
     if not is_admin(call.from_user.id): return
@@ -1219,6 +1190,7 @@ def ban_user_id(msg):
         bot.reply_to(msg, "❌ معرف غير صحيح")
     del user_states[msg.from_user.id]
 
+# --- إلغاء حظر ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_unban")
 def admin_unban(call):
     if not is_admin(call.from_user.id): return
@@ -1235,6 +1207,7 @@ def unban_user_id(msg):
         bot.reply_to(msg, "❌ معرف غير صحيح")
     del user_states[msg.from_user.id]
 
+# --- معلومات مستخدم ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_user_info")
 def admin_user_info(call):
     if not is_admin(call.from_user.id): return
@@ -1255,6 +1228,7 @@ def user_info_show(msg):
         bot.reply_to(msg, "❌ معرف غير صحيح")
     del user_states[msg.from_user.id]
 
+# --- إدارة الاشتراك الإجباري ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_force_sub")
 def admin_force_sub(call):
     if not is_admin(call.from_user.id): return
@@ -1269,8 +1243,8 @@ def admin_force_sub(call):
         conn.close()
         st = "✅" if en else "❌"
         markup.add(types.InlineKeyboardButton(f"{st} {desc or url[:20]}", callback_data=f"edit_force_{cid}"))
-    markup.add(types.InlineKeyboardButton("➕ إضافة", callback_data="add_force_ch"))
-    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel"))
+    markup.add(types.InlineKeyboardButton("➕ إضافة", callback_data="add_force_ch", style='primary'))
+    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel", style='success'))
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data == "add_force_ch")
@@ -1310,10 +1284,10 @@ def edit_force_ch(call):
     url, desc, en = row
     text = f"🔧 {url}\nالوصف: {desc or '—'}\nالحالة: {'مفعلة' if en else 'معطلة'}"
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✏️ تعديل الوصف", callback_data=f"edit_desc_{cid}"))
-    markup.add(types.InlineKeyboardButton("❌ تعطيل" if en else "✅ تفعيل", callback_data=f"toggle_force_{cid}"))
-    markup.add(types.InlineKeyboardButton("🗑️ حذف", callback_data=f"del_force_{cid}"))
-    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="force_sub_admin"))
+    markup.add(types.InlineKeyboardButton("✏️ تعديل الوصف", callback_data=f"edit_desc_{cid}", style='primary'))
+    markup.add(types.InlineKeyboardButton("❌ تعطيل" if en else "✅ تفعيل", callback_data=f"toggle_force_{cid}", style='danger'))
+    markup.add(types.InlineKeyboardButton("🗑️ حذف", callback_data=f"del_force_{cid}", style='success'))
+    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="force_sub_admin", style='success'))
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("toggle_force_"))
@@ -1350,13 +1324,14 @@ def edit_desc_exec(msg):
     bot.reply_to(msg, "✅ تم التحديث")
     del user_states[msg.from_user.id]
 
+# --- إدارة الرينجات الخاصة ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_private_combo")
 def admin_private_combo(call):
     if not is_admin(call.from_user.id): return
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("➕ تعيين رينج خاص", callback_data="add_private_combo"))
-    markup.add(types.InlineKeyboardButton("🗑️ حذف رينج خاص", callback_data="del_private_combo"))
-    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel"))
+    markup.add(types.InlineKeyboardButton("➕ تعيين رينج خاص", callback_data="add_private_combo", style='danger'))
+    markup.add(types.InlineKeyboardButton("🗑️ حذف رينج خاص", callback_data="del_private_combo", style='success'))
+    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel", style='success'))
     bot.edit_message_text("🔑 إدارة الرينجات الخاصة", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data == "add_private_combo")
@@ -1377,7 +1352,7 @@ def add_private_user(msg):
             buttons.append(types.InlineKeyboardButton(f"{flag} {name_ar}", callback_data=f"select_private_{uid}_{code}"))
         for i in range(0, len(buttons), 2):
             markup.row(*buttons[i:i+2])
-        markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_private_combo"))
+        markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_private_combo", style='success'))
         bot.reply_to(msg, "اختر الدولة:", reply_markup=markup)
     except:
         bot.reply_to(msg, "❌ معرف غير صحيح")
@@ -1407,6 +1382,7 @@ def del_private_user(msg):
         bot.reply_to(msg, "❌ معرف غير صحيح")
     del user_states[msg.from_user.id]
 
+# --- تغيير صورة الترحيب ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_set_welcome_photo")
 def admin_set_welcome_photo(call):
     if not is_admin(call.from_user.id): return
@@ -1428,12 +1404,13 @@ def admin_del_welcome_photo(call):
     bot.answer_callback_query(call.id, "🗑️ تم حذف الصورة", show_alert=True)
     admin_panel(call)
 
+# --- مسح قاعدة البيانات ---
 @bot.callback_query_handler(func=lambda call: call.data == "clear_db")
 def clear_db(call):
     if not is_admin(call.from_user.id): return
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✅ تأكيد", callback_data="confirm_clear_db"))
-    markup.add(types.InlineKeyboardButton("❌ إلغاء", callback_data="admin_panel"))
+    markup.add(types.InlineKeyboardButton("✅ تأكيد", callback_data="confirm_clear_db", style='success'))
+    markup.add(types.InlineKeyboardButton("❌ إلغاء", callback_data="admin_panel", style='success'))
     bot.edit_message_text("⚠️ تأكيد مسح قاعدة البيانات؟", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data == "confirm_clear_db")
@@ -1453,7 +1430,7 @@ def confirm_clear_db(call):
     admin_panel(call)
 
 # ======================================================================================
-# خادم ويب Flask للحفاظ على التشغيل
+# خادم ويب Flask
 # ======================================================================================
 app = Flask(__name__)
 
@@ -1482,14 +1459,14 @@ def run_bot():
             time.sleep(5)
 
 if __name__ == "__main__":
-    # تشغيل خادم الويب في خيط منفصل
+    # تشغيل خادم الويب
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
     logger.info("✅ خادم الويب يعمل على المنفذ 8080")
     
-    # تشغيل الحلقة الرئيسية للبوت في خيط آخر
+    # تشغيل الحلقة الرئيسية
     main_thread = threading.Thread(target=main_loop, daemon=True)
     main_thread.start()
     
-    # تشغيل البوت (polling)
+    # تشغيل البوت
     run_bot()
