@@ -1,7 +1,7 @@
 # ======================================================================================
-# بوت DGDNetwork - النسخة النهائية (تم حل مشكلة 404)
+# بوت DGDNetwork - النسخة النهائية (مع تقنيع الأرقام في الجروب ونسخ سهل للكود)
 # المطور: hacker Taker
-# يعمل على Render مع خادم ويب Flask
+# جميع الأزرار شغالة - جلب تلقائي سريع - يعمل على Render
 # ======================================================================================
 
 import time
@@ -33,16 +33,16 @@ logger = logging.getLogger(__name__)
 # ======================================================================================
 # الإعدادات الأساسية
 # ======================================================================================
-BOT_TOKEN = "8686995713:AAFfgZiLk_9f9ny-rHqhy0sgXTfeW9cvHd4"
+BOT_TOKEN = "8686995713:AAFShmlZ2Lm5VuleHFWlFNKkXM_wo04rz38"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
 DB_PATH = os.environ.get("DB_PATH", "dgd_bot.db")
 
 # ======================================================================================
-# مفتاح API والروابط
+# بيانات DGDNetwork API
 # ======================================================================================
-DGD_API_KEY = "dgd_e2a755bfa8b37b06728b01c6178d4799780e7d62b6696c8e"
 DGD_BASE_URL = "https://dgddigital.com"
+DGD_API_KEY = "dgd_e2a755bfa8b37b06728b01c6178d4799780e7d62b6696c8e"
 
 # ======================================================================================
 # تعريف البوت
@@ -51,20 +51,20 @@ bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
 
 # ======================================================================================
-# قائمة الدول المتاحة (جميع الرينجات التي أرسلتها)
+# قائمة الدول المتاحة (حسب طلبك)
 # ======================================================================================
 AVAILABLE_COUNTRIES = {
     "224": ("غينيا", "🇬🇳", ["224655311XXX", "22465520XXX", "224655XXX"]),
-    "232": ("سيراليون", "🇸🇱", ["23276XXX", "2327651XXX", "2327653XXX", "232764XXX", "23276959XXX", "23276575XXX", "23276559XXX"]),
+    "232": ("سيراليون", "🇸🇱", ["23276XXX", "2327651XXX", "2327653XXX"]),
     "229": ("بنين", "🇧🇯", ["2290194323XXX"]),
     "225": ("ساحل العاج", "🇨🇮", ["225071800XXX", "2250709726XXX", "225071860XXX", "225073XXX", "225077897XXX", "2250787XXX", "22507XXX"]),
-    "236": ("جمهورية أفريقيا الوسطى", "🇨🇫", ["23672308XXX", "2367230XXX", "23672736XXX", "23672XXX", "2367234XXX", "2367210XXX", "2367293XXX", "2367277XXX"]),
     "261": ("مدغشقر", "🇲🇬", ["261345XXX"]),
+    "236": ("جمهورية أفريقيا الوسطى", "🇨🇫", ["23672308XXX", "2367230XXX", "23672736XXX"]),
+    "44": ("المملكة المتحدة", "🇬🇧", ["4473845XXX"]),
 }
-DEFAULT_RANGES = {code: ranges for code, (_, _, ranges) in AVAILABLE_COUNTRIES.items()}
 
 # ======================================================================================
-# دوال الإعدادات
+# دوال الإعدادات وقاعدة البيانات (مختصرة ولكنها كاملة)
 # ======================================================================================
 def get_setting(key):
     try:
@@ -87,9 +87,6 @@ def set_setting(key, value):
     except:
         pass
 
-# ======================================================================================
-# قاعدة البيانات
-# ======================================================================================
 def init_db():
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -156,7 +153,7 @@ def init_db():
 init_db()
 
 # ======================================================================================
-# دوال المستخدمين
+# دوال المستخدمين الأساسية
 # ======================================================================================
 def get_user(user_id):
     try:
@@ -454,67 +451,40 @@ def force_sub_markup():
     return markup
 
 # ======================================================================================
-# دوال DGD API (تم التعديل هنا لحل مشكلة 404)
+# دوال DGDNetwork API
 # ======================================================================================
 def dgd_get_number(range_str):
-    """
-    إرسال طلب POST إلى API DGDNetwork للحصول على رقم جديد
-    """
     url = f"{DGD_BASE_URL}/api/v1/user/getnum"
-    headers = {
-        "X-API-KEY": DGD_API_KEY,
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
-    payload = {
-        "range": range_str,
-        "is_national": False,
-        "remove_plus": False
-    }
+    headers = {"X-API-KEY": DGD_API_KEY, "Content-Type": "application/json", "Accept": "application/json"}
+    payload = {"range": range_str, "is_national": False, "remove_plus": False}
     try:
-        logger.info(f"📤 إرسال طلب رقم: {range_str}")
         resp = requests.post(url, json=payload, headers=headers, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-        
-        # التحقق من نجاح الطلب
         if not data.get("ok"):
-            raise Exception(data.get("message", "خطأ في استجابة API"))
-        
-        # استخراج الرقم من الرد (قد يكون في data.number أو data.data.number)
+            raise Exception(data.get("message", "DGD API error"))
         number = data.get("data", {}).get("number") or data.get("number")
         if not number:
             raise Exception("لم يتم العثور على رقم في الرد")
-        
-        logger.info(f"✅ تم الحصول على رقم: {number}")
         return str(number).strip()
-    except requests.exceptions.RequestException as e:
-        logger.error(f"❌ فشل طلب HTTP: {e}")
-        raise Exception(f"فشل الاتصال بالخادم: {e}")
     except Exception as e:
-        logger.error(f"❌ خطأ في dgd_get_number: {e}")
+        logger.error(f"dgd_get_number failed: {e}")
         raise
 
 def dgd_check_number(phone):
-    """
-    التحقق من حالة الرقم والحصول على OTP إن وجد
-    """
     url = f"{DGD_BASE_URL}/api/v1/user/checknum"
-    headers = {
-        "X-API-KEY": DGD_API_KEY,
-        "Accept": "application/json"
-    }
+    headers = {"X-API-KEY": DGD_API_KEY, "Accept": "application/json"}
     params = {"nomor": phone}
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=30)
         resp.raise_for_status()
         data = resp.json()
         if not data.get("ok"):
-            raise Exception(data.get("message", "خطأ في استجابة API"))
+            raise Exception(data.get("message", "DGD API error"))
         info = data.get("data", {})
         return {"status": info.get("status"), "otp": info.get("kode_otp")}
     except Exception as e:
-        logger.error(f"❌ خطأ في dgd_check_number: {e}")
+        logger.error(f"dgd_check_number failed: {e}")
         raise
 
 # ======================================================================================
@@ -568,7 +538,7 @@ def remove_active_number(number):
         pass
 
 # ======================================================================================
-# دوال معالجة النصوص
+# دوال معالجة النصوص (مع تحسين تقنيع الرقم)
 # ======================================================================================
 def clean_number(number):
     return re.sub(r'\D', '', str(number))
@@ -628,6 +598,10 @@ def get_country_info_by_number(number):
     return "غير معروف", "🌍"
 
 def mask_number(number):
+    """
+    تقنيع الرقم: إظهار أول 4 أرقام وآخر 4 أرقام فقط
+    مثال: 447384512345 -> 4473••••2345
+    """
     num = str(number)
     if len(num) <= 8:
         return num
@@ -639,6 +613,7 @@ def safe_html(text):
     return str(text).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
 
 def format_message_group(number, sms):
+    """تنسيق الرسالة للجروب (الرقم مقنع)"""
     name_ar, flag = get_country_info_by_number(number)
     otp = extract_otp(sms)
     svc = detect_service(sms)
@@ -652,6 +627,7 @@ def format_message_group(number, sms):
 <b>كود {svc} {otp[:3]}-{otp[3:]} ؟</b>"""
 
 def format_message_user(number, sms):
+    """تنسيق الرسالة للمستخدم (الرقم كامل)"""
     name_ar, flag = get_country_info_by_number(number)
     otp = extract_otp(sms)
     svc = detect_service(sms)
@@ -666,7 +642,7 @@ def format_message_user(number, sms):
 <b>كود {svc} {otp[:3]}-{otp[3:]} ؟</b>"""
 
 # ======================================================================================
-# إرسال OTP
+# إرسال OTP للمستخدم والجروب (مع زر نسخ سهل)
 # ======================================================================================
 def send_otp_to_user_and_group(date_str, number, sms):
     otp = extract_otp(sms)
@@ -674,26 +650,29 @@ def send_otp_to_user_and_group(date_str, number, sms):
     user_id = get_user_by_number(clean_num)
     log_otp(clean_num, otp, sms, user_id)
     
+    # 1. إرسال للمستخدم (الرقم كامل + زر نسخ)
     if user_id:
         try:
             user_markup = types.InlineKeyboardMarkup()
             user_markup.row(
-                types.InlineKeyboardButton("𝑂𝑊𝑁𝐸𝑅⚙️", url="https://t.me/hackerTaker"),
-                types.InlineKeyboardButton("𓆩𝘽𝙤𝙩 𝘾𝙝𝙖𝙣𝙣𝙚𝙡𓆪", url="https://t.me/numhj")
+                types.InlineKeyboardButton("📋 نسخ الكود", callback_data=f"copy_{otp}"),
+                types.InlineKeyboardButton("𝑂𝑊𝑁𝐸𝑅⚙️", url="https://t.me/hackerTaker")
             )
             bot.send_message(user_id, format_message_user(clean_num, sms), parse_mode="HTML", reply_markup=user_markup)
             logger.info(f"✅ تم إرسال OTP للمستخدم {user_id}")
         except Exception as e:
             logger.error(f"إرسال للمستخدم {user_id} فشل: {e}")
-    else:
-        logger.warning(f"⚠️ لم يتم العثور على مستخدم للرقم {clean_num}")
     
+    # 2. إرسال للجروب (الرقم مقنع + زر نسخ)
     group_markup = types.InlineKeyboardMarkup()
     group_markup.row(
-        types.InlineKeyboardButton("💬 𝕆𝕋ℙ 𝔾ℝ𝕆𝕌ℙ", url="https://t.me/numhj"),
-        types.InlineKeyboardButton("🤖 𝔻𝔼𝕍𝕀𝕃 𝔹𝕆𝕋", url="https://t.me/Taker_OTP_BOT")
+        types.InlineKeyboardButton("📋 نسخ الكود", callback_data=f"copy_{otp}"),
+        types.InlineKeyboardButton("💬 𝕆𝕋ℙ 𝔾ℝ𝕆𝕌ℙ", url="https://t.me/numhj")
     )
-    group_markup.row(types.InlineKeyboardButton("👑 𝕆𝕎ℕ𝔼ℝ", url="https://t.me/hackerTaker"))
+    group_markup.row(
+        types.InlineKeyboardButton("🤖 𝔻𝔼𝕍𝕀𝕃 𝔹𝕆𝕋", url="https://t.me/Taker_OTP_BOT"),
+        types.InlineKeyboardButton("👑 𝕆𝕎ℕ𝔼ℝ", url="https://t.me/hackerTaker")
+    )
     
     for chat_id in CHAT_IDS:
         try:
@@ -702,20 +681,22 @@ def send_otp_to_user_and_group(date_str, number, sms):
         except Exception as e:
             logger.error(f"إرسال للجروب {chat_id} فشل: {e}")
 
+# ======================================================================================
+# معالج زر نسخ الكود
+# ======================================================================================
 @bot.callback_query_handler(func=lambda call: call.data.startswith("copy_"))
 def handle_copy_button(call):
     otp_code = call.data.split("_", 1)[1]
     bot.answer_callback_query(call.id, f"✅ تم نسخ الكود: {otp_code}", show_alert=True)
 
 # ======================================================================================
-# التشغيل التلقائي (طلب أرقام جديدة وفحصها)
+# التشغيل التلقائي (جلب الأرقام وفحص OTP) - سرعة فائقة
 # ======================================================================================
 def request_new_numbers():
     try:
         combos = get_all_combos()
         if not combos:
-            # تهيئة الرينجات الافتراضية إذا لم توجد
-            for code, ranges in DEFAULT_RANGES.items():
+            for code, (_, _, ranges) in AVAILABLE_COUNTRIES.items():
                 for rng in ranges:
                     save_combo(code, rng)
             combos = get_all_combos()
@@ -728,7 +709,7 @@ def request_new_numbers():
                 clean_num = re.sub(r'\D', '', new_number)
                 add_active_number(clean_num, country_code, combo_index, assigned_to=0)
                 logger.info(f"✅ طلب رقم جديد: {clean_num} من {country_code}")
-                time.sleep(1)  # تجنب الإفراط في الطلب
+                time.sleep(0.5)  # سرعة عالية
             except Exception as e:
                 logger.error(f"❌ فشل طلب رقم من {country_code}: {e}")
     except Exception as e:
@@ -762,20 +743,20 @@ def check_active_numbers():
         logger.error(f"check_active_numbers error: {e}")
 
 def main_loop():
-    logger.info("🚀 DGDNetwork Bot يعمل (تم حل مشكلة 404)")
+    logger.info("🚀 DGDNetwork Bot يعمل (سرعة فائقة)")
     last_request = 0
     while True:
         try:
             now = time.time()
-            if now - last_request >= 30:
+            if now - last_request >= 20:  # طلب أرقام جديدة كل 20 ثانية
                 request_new_numbers()
                 last_request = now
             check_active_numbers()
-            time.sleep(2)
+            time.sleep(1)  # فحص سريع كل ثانية
         except Exception as e:
             logger.error(f"❌ خطأ رئيسي: {e}")
             traceback.print_exc()
-            time.sleep(10)
+            time.sleep(5)
 
 # ======================================================================================
 # أوامر البوت الأساسية
@@ -900,7 +881,7 @@ def handle_country(call):
         if not ranges:
             bot.answer_callback_query(call.id, "❌ لا توجد رينجات.", show_alert=True)
             return
-        range_str = ranges[0]  # نأخذ أول رينج (يمكن تحسينه لاختيار عشوائي)
+        range_str = ranges[0]
         try:
             number = dgd_get_number(range_str)
         except Exception as e:
@@ -973,7 +954,7 @@ def back_to_start(call):
         logger.error(f"back_to_start error: {e}")
 
 # ======================================================================================
-# أزرار الكيبورد
+# معالجات أزرار الكيبورد
 # ======================================================================================
 @bot.message_handler(func=lambda msg: msg.text == "📱 الحصول على رقم")
 def get_number_menu(msg):
@@ -1012,7 +993,7 @@ def admin_panel_btn(msg):
         admin_panel(msg)
 
 # ======================================================================================
-# 🔐 لوحة تحكم المطور - جميع الأزرار شغالة
+# 🔐 لوحة تحكم المطور
 # ======================================================================================
 def admin_main_menu():
     markup = types.InlineKeyboardMarkup()
@@ -1058,7 +1039,6 @@ def admin_panel(call):
     try:
         if call.from_user.id in user_states:
             del user_states[call.from_user.id]
-            
         admin_text = (
             "<b>❍─── <u>لوحة التحكم</u> ───❍</b>\n\n"
             "<b>👋 مرحباً بك يا مطور.</b>\n\n"
@@ -1068,15 +1048,12 @@ def admin_panel(call):
             f"<b>• الوقت الحالي: <u>{datetime.now().strftime('%H:%M')}</u></b>\n"
             "<b>────────────────────</b>"
         )
-        
         bot.answer_callback_query(call.id)
-        
         try:
             bot.edit_message_text(admin_text, call.message.chat.id, call.message.message_id, parse_mode="HTML", reply_markup=admin_main_menu())
         except Exception as e:
             logger.warning(f"Edit failed, sending new message: {e}")
             bot.send_message(call.message.chat.id, admin_text, parse_mode="HTML", reply_markup=admin_main_menu())
-            
     except Exception as e:
         logger.error(f"Admin Panel Error: {e}")
         bot.send_message(call.message.chat.id, "❌ حدث خطأ في لوحة التحكم، حاول مرة أخرى.")
@@ -1084,7 +1061,6 @@ def admin_panel(call):
 # ======================================================================================
 # دوال لوحة الإدارة (جميع الأزرار شغالة)
 # ======================================================================================
-
 @bot.callback_query_handler(func=lambda call: call.data == "toggle_maintenance")
 def handle_maintenance_toggle(call):
     if not is_admin(call.from_user.id): return
