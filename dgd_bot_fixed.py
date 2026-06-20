@@ -1,8 +1,7 @@
 # ======================================================================================
-# بوت DGDNetwork - النسخة النهائية المتكاملة (مع لوحة إدارة كاملة)
+# بوت DGDNetwork - النسخة النهائية العملاقة (جميع الأزرار شغالة)
 # المطور: hacker Taker
 # يعمل على Render مع خادم ويب Flask
-# جميع الأزرار شغالة - جلب تلقائي للأرقام والـ OTP
 # ======================================================================================
 
 import time
@@ -32,7 +31,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ======================================================================================
-# الإعدادات الأساسية (تم التحديث ببياناتك)
+# الإعدادات الأساسية
 # ======================================================================================
 BOT_TOKEN = "8686995713:AAFfgZiLk_9f9ny-rHqhy0sgXTfeW9cvHd4"
 CHAT_IDS = ["-1003789271722"]
@@ -40,10 +39,10 @@ ADMIN_IDS = [8728019066, 8972941677]
 DB_PATH = os.environ.get("DB_PATH", "dgd_bot.db")
 
 # ======================================================================================
-# بيانات DGDNetwork API (تم التحديث)
+# مفتاح API والروابط
 # ======================================================================================
-DGD_BASE_URL = "https://dgddigital.com"  # الرابط الصحيح
 DGD_API_KEY = "dgd_e2a755bfa8b37b06728b01c6178d4799780e7d62b6696c8e"
+DGD_BASE_URL = "https://dgddigital.com"
 
 # ======================================================================================
 # تعريف البوت
@@ -52,18 +51,17 @@ bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
 
 # ======================================================================================
-# قائمة الدول المتاحة (تم التحديث حسب طلبك)
+# قائمة الدول المتاحة
 # ======================================================================================
 AVAILABLE_COUNTRIES = {
     "224": ("غينيا", "🇬🇳", ["224655311XXX", "22465520XXX", "224655XXX"]),
-    "232": ("سيراليون", "🇸🇱", ["23276XXX", "2327651XXX", "2327653XXX"]),
+    "232": ("سيراليون", "🇸🇱", ["23276XXX", "2327651XXX", "2327653XXX", "232764XXX", "23276959XXX", "23276575XXX", "23276559XXX"]),
     "229": ("بنين", "🇧🇯", ["2290194323XXX"]),
     "225": ("ساحل العاج", "🇨🇮", ["225071800XXX", "2250709726XXX", "225071860XXX", "225073XXX", "225077897XXX", "2250787XXX", "22507XXX"]),
+    "236": ("جمهورية أفريقيا الوسطى", "🇨🇫", ["23672308XXX", "2367230XXX", "23672736XXX", "23672XXX", "2367234XXX", "2367210XXX", "2367293XXX", "2367277XXX"]),
     "261": ("مدغشقر", "🇲🇬", ["261345XXX"]),
-    "232": ("سيراليون (إضافي)", "🇸🇱", ["232764XXX", "23276959XXX", "23276575XXX", "23276559XXX"]),
-    "236": ("جمهورية أفريقيا الوسطى", "🇨🇫", ["23672308XXX", "2367230XXX", "23672736XXX"]),
-    "44": ("المملكة المتحدة", "🇬🇧", ["4473845XXX"]),
 }
+DEFAULT_RANGES = {code: ranges for code, (_, _, ranges) in AVAILABLE_COUNTRIES.items()}
 
 # ======================================================================================
 # دوال الإعدادات
@@ -456,15 +454,11 @@ def force_sub_markup():
     return markup
 
 # ======================================================================================
-# دوال DGDNetwork API
+# دوال DGD API
 # ======================================================================================
 def dgd_get_number(range_str):
     url = f"{DGD_BASE_URL}/api/v1/user/getnum"
-    headers = {
-        "X-API-KEY": DGD_API_KEY,
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
+    headers = {"X-API-KEY": DGD_API_KEY, "Content-Type": "application/json", "Accept": "application/json"}
     payload = {"range": range_str, "is_national": False, "remove_plus": False}
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=30)
@@ -687,14 +681,13 @@ def handle_copy_button(call):
     bot.answer_callback_query(call.id, f"✅ تم نسخ الكود: {otp_code}", show_alert=True)
 
 # ======================================================================================
-# التشغيل التلقائي (جلب الأرقام وفحص OTP)
+# التشغيل التلقائي
 # ======================================================================================
 def request_new_numbers():
     try:
         combos = get_all_combos()
         if not combos:
-            # إضافة الرينجات الافتراضية إذا لم توجد
-            for code, (_, _, ranges) in AVAILABLE_COUNTRIES.items():
+            for code, ranges in DEFAULT_RANGES.items():
                 for rng in ranges:
                     save_combo(code, rng)
             combos = get_all_combos()
@@ -706,7 +699,7 @@ def request_new_numbers():
                 new_number = dgd_get_number(range_str)
                 clean_num = re.sub(r'\D', '', new_number)
                 add_active_number(clean_num, country_code, combo_index, assigned_to=0)
-                logger.info(f"✅ طلب رقم جديد: {clean_num} من {country_code} (رينج: {range_str})")
+                logger.info(f"✅ طلب رقم جديد: {clean_num} من {country_code}")
                 time.sleep(1)
             except Exception as e:
                 logger.error(f"❌ فشل طلب رقم من {country_code}: {e}")
@@ -741,7 +734,7 @@ def check_active_numbers():
         logger.error(f"check_active_numbers error: {e}")
 
 def main_loop():
-    logger.info("🚀 DGDNetwork Bot يعمل (تلقائي، سريع)")
+    logger.info("🚀 DGDNetwork Bot يعمل")
     last_request = 0
     while True:
         try:
