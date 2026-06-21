@@ -13,7 +13,7 @@ CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
 DB_PATH = "xwdsms_bot.db"
 
-# ================ الدول الافتراضية (Prefix التي يقبلها API) ================
+# ================ الدول الافتراضية ================
 DEFAULT_COUNTRIES = {
     "22501": "ساحل العاج",
     "23276": "سيراليون",
@@ -21,16 +21,14 @@ DEFAULT_COUNTRIES = {
     "44740": "المملكة المتحدة",
     "23490": "نيجيريا",
     "25471": "كينيا",
-    # الإضافات الجديدة
     "24910": "السودان 10",
+    
     "22507": "ساحل العاج VIP",
     "49155": "ألمانيا",
-    "26134": "مدغشقر",
     "23762": "الكاميرون",
     "22178": "السنغال",
     "22901": "بنين",
     "22898": "توجو",
-    "23276": "سيراليون",
 }
 
 # ================ API Functions ================
@@ -45,9 +43,8 @@ def api_get_number(prefix):
         return data["id"], data["number"]
     except requests.exceptions.HTTPError as e:
         if e.response.status_code == 404:
-            raise Exception("هذه الدولة غير متوفرة حالياً (404)")
-        else:
-            raise Exception(f"خطأ في الاتصال: {e}")
+            raise Exception("هذه الدولة غير متوفرة حالياً")
+        raise Exception(f"خطأ في الاتصال")
     except Exception as e:
         raise Exception(f"خطأ: {e}")
 
@@ -75,9 +72,9 @@ def api_get_balance():
     headers = {"x-api-key": API_KEY}
     try:
         resp = requests.get(f"{BASE_URL}/api/v1/balance", headers=headers, timeout=10)
-        return resp.json().get("balance", "غير معروف")
+        return resp.json().get("balance", "0")
     except:
-        return "غير معروف"
+        return "0"
 
 # ================ قاعدة البيانات ================
 def init_db():
@@ -85,7 +82,9 @@ def init_db():
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
-        last_name TEXT, balance REAL DEFAULT 0, is_banned INTEGER DEFAULT 0)''')
+        last_name TEXT, balance REAL DEFAULT 0, is_banned INTEGER DEFAULT 0,
+        total_requests INTEGER DEFAULT 0, total_otps INTEGER DEFAULT 0,
+        first_seen TEXT, last_seen TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS active_numbers (
         alloc_id TEXT PRIMARY KEY, number TEXT, prefix TEXT,
         assigned_to INTEGER, created_at TEXT, status TEXT DEFAULT 'waiting', otp TEXT)''')
@@ -101,10 +100,8 @@ def init_db():
         key TEXT PRIMARY KEY, value TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS countries (
         prefix TEXT PRIMARY KEY, name TEXT)''')
-    # إعدادات افتراضية
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('maintenance', '0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('welcome_photo', '')")
-    # إدراج الدول الافتراضية
     for prefix, name in DEFAULT_COUNTRIES.items():
         c.execute("INSERT OR IGNORE INTO countries (prefix, name) VALUES (?, ?)", (prefix, name))
     conn.commit()
@@ -130,7 +127,7 @@ def set_setting(key, value):
 def get_all_countries():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT prefix, name FROM countries")
+    c.execute("SELECT prefix, name FROM countries ORDER BY name")
     rows = c.fetchall()
     conn.close()
     return {row[0]: row[1] for row in rows}
@@ -152,12 +149,17 @@ def delete_country(prefix):
 # ================ دوال مساعدة ================
 def save_user(message):
     uid = message.from_user.id
+    now = datetime.now().isoformat()
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT user_id FROM users WHERE user_id=?", (uid,))
-    if not c.fetchone():
-        c.execute("INSERT INTO users (user_id, username, first_name, last_name) VALUES (?,?,?,?)",
-                  (uid, message.from_user.username, message.from_user.first_name, message.from_user.last_name))
+    c.execute("SELECT user_id, first_seen FROM users WHERE user_id=?", (uid,))
+    row = c.fetchone()
+    if not row:
+        c.execute("INSERT INTO users (user_id, username, first_name, last_name, first_seen, last_seen) VALUES (?,?,?,?,?,?)",
+                  (uid, message.from_user.username, message.from_user.first_name, message.from_user.last_name, now, now))
+    else:
+        c.execute("UPDATE users SET username=?, first_name=?, last_name=?, last_seen=? WHERE user_id=?",
+                  (message.from_user.username, message.from_user.first_name, message.from_user.last_name, now, uid))
     conn.commit()
     conn.close()
 
@@ -183,6 +185,7 @@ def assign_number(uid, alloc_id, number, prefix):
     c = conn.cursor()
     c.execute("INSERT INTO active_numbers (alloc_id, number, prefix, assigned_to, created_at) VALUES (?,?,?,?,?)",
               (alloc_id, number, prefix, uid, datetime.now().isoformat()))
+    c.execute("UPDATE users SET total_requests = total_requests + 1 WHERE user_id=?", (uid,))
     conn.commit()
     conn.close()
 
@@ -199,14 +202,6 @@ def release_user_number(uid):
     conn.commit()
     conn.close()
 
-def get_user_active_number(uid):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT alloc_id, number, prefix FROM active_numbers WHERE assigned_to=? AND status='waiting'", (uid,))
-    row = c.fetchone()
-    conn.close()
-    return row
-
 def get_all_active():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -219,6 +214,7 @@ def save_otp(alloc_id, otp):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("UPDATE active_numbers SET status='success', otp=? WHERE alloc_id=?", (otp, alloc_id))
+    c.execute("UPDATE users SET total_otps = total_otps + 1 WHERE user_id=(SELECT assigned_to FROM active_numbers WHERE alloc_id=?)", (alloc_id,))
     conn.commit()
     conn.close()
 
@@ -254,21 +250,45 @@ def process_referral(ref_code, new_uid):
     if row:
         referrer = row[0]
         c.execute("UPDATE referrals SET ref_count = ref_count + 1 WHERE user_id=?", (referrer,))
-        c.execute("UPDATE users SET balance = balance + 0.5 WHERE user_id=?", (referrer,))
+        c.execute("UPDATE users SET balance = balance + 0.05 WHERE user_id=?", (referrer,))
     conn.commit()
     conn.close()
+
+def get_user_stats(uid):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT total_requests, total_otps, first_seen, last_seen FROM users WHERE user_id=?", (uid,))
+    row = c.fetchone()
+    conn.close()
+    return row if row else (0, 0, None, None)
+
+def get_user_balance(uid):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT balance FROM users WHERE user_id=?", (uid,))
+    row = c.fetchone()
+    c.execute("SELECT ref_count FROM referrals WHERE user_id=?", (uid,))
+    refs = c.fetchone()
+    conn.close()
+    return (row[0] if row else 0), (refs[0] if refs else 0)
 
 def check_subscription(uid):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT * FROM force_channels WHERE enabled=1")
+    c.execute("SELECT channel_url FROM force_channels WHERE enabled=1")
     channels = c.fetchall()
     conn.close()
     if not channels:
         return True
-    for ch in channels:
+    for (url,) in channels:
         try:
-            member = bot.get_chat_member(ch[1], uid)
+            if url.startswith("https://t.me/"):
+                ch = "@" + url.split("/")[-1]
+            elif url.startswith("@"):
+                ch = url
+            else:
+                continue
+            member = bot.get_chat_member(ch, uid)
             if member.status not in ["member", "administrator", "creator"]:
                 return False
         except:
@@ -278,14 +298,15 @@ def check_subscription(uid):
 def sub_markup():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT * FROM force_channels WHERE enabled=1")
+    c.execute("SELECT channel_url, description FROM force_channels WHERE enabled=1")
     channels = c.fetchall()
     conn.close()
     if not channels:
         return None
     markup = types.InlineKeyboardMarkup()
-    for ch in channels:
-        markup.add(types.InlineKeyboardButton(f"اشترك في {ch[2]}", url=ch[1]))
+    for url, desc in channels:
+        text = f"📢 {desc}" if desc else "📢 اشترك في القناة"
+        markup.add(types.InlineKeyboardButton(text, url=url))
     markup.add(types.InlineKeyboardButton("✅ تحقق من الاشتراك", callback_data="check_sub"))
     return markup
 
@@ -297,29 +318,39 @@ def detect_service(text):
     text = text.lower()
     services = {
         "WhatsApp": ["whatsapp", "واتساب", "واتس"],
-        "Telegram": ["telegram", "تيليجرام", "تليجرام"],
+        "Telegram": ["telegram", "تيليجرام", "تليجرام", "telegram"],
         "Facebook": ["facebook", "فيسبوك", "fb"],
         "Instagram": ["instagram", "انستقرام", "انستا"],
         "Google": ["google", "gmail", "جوجل"],
-        "Twitter/X": ["twitter", "تويتر", "x.com"],
+        "Twitter / X": ["twitter", "تويتر", "x.com"],
         "Discord": ["discord", "ديسكورد"],
-        "Snapchat": ["snapchat", "سناب"],
+        "Snapchat": ["snapchat", "سناب شات", "سناب"],
         "TikTok": ["tiktok", "تيك توك"],
         "Amazon": ["amazon", "امازون"],
         "Apple": ["apple", "ابل", "icloud"],
         "Microsoft": ["microsoft", "مايكروسوفت"],
         "Uber": ["uber", "اوبر"],
         "Netflix": ["netflix", "نتفلكس"],
+        "YouTube": ["youtube", "يوتيوب"],
     }
     for service, keywords in services.items():
         for kw in keywords:
             if kw in text:
                 return service
-    return "OTP"
+    return "Unknown Service"
 
 def mask_number(number):
     num = str(number)
-    return num[:4] + "••••" + num[-4:] if len(num) > 8 else num
+    return num[:4] + "****" + num[-3:] if len(num) > 8 else num
+
+def format_time(iso_str):
+    if not iso_str:
+        return "غير معروف"
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        return dt.strftime("%d-%m-%Y %H:%M")
+    except:
+        return iso_str
 
 # ================ بوت تيليجرام ================
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -329,20 +360,32 @@ def main_keyboard(uid):
     kb.add(
         types.KeyboardButton("📱 احصل على رقم"),
         types.KeyboardButton("🌍 الدول المتاحة"),
-        types.KeyboardButton("📊 الإحصائيات"),
-        types.KeyboardButton("💰 الرصيد"),
-        types.KeyboardButton("💸 سحب الرصيد"),
+        types.KeyboardButton("📊 إحصائياتي")
+    )
+    kb.add(
+        types.KeyboardButton("💰 رصيدي"),
+        types.KeyboardButton("🤝 دعوة الأصدقاء"),
         types.KeyboardButton("🟢 حركة المرور")
     )
     if uid in ADMIN_IDS:
-        kb.add(types.KeyboardButton("⚙️ لوحة الإدارة"))
+        kb.add(types.KeyboardButton("⚙️ لوحة التحكم"))
     return kb
 
-def country_inline():
+def country_inline(page=0):
+    countries = list(get_all_countries().items())
     markup = types.InlineKeyboardMarkup(row_width=2)
-    countries = get_all_countries()
-    for prefix, name in countries.items():
+    per_page = 8
+    start = page * per_page
+    chunk = countries[start:start+per_page]
+    for prefix, name in chunk:
         markup.add(types.InlineKeyboardButton(name, callback_data=f"getnum_{prefix}"))
+    nav = []
+    if page > 0:
+        nav.append(types.InlineKeyboardButton("‹ السابق", callback_data=f"countries_{page-1}"))
+    if start + per_page < len(countries):
+        nav.append(types.InlineKeyboardButton("التالي ›", callback_data=f"countries_{page+1}"))
+    if nav:
+        markup.row(*nav)
     return markup
 
 def number_actions(prefix, alloc_id):
@@ -352,8 +395,8 @@ def number_actions(prefix, alloc_id):
         types.InlineKeyboardButton("🌍 تغيير الدولة", callback_data="country_menu")
     )
     markup.row(
-        types.InlineKeyboardButton("📞 جروب البوت", url="https://t.me/numhj"),
-        types.InlineKeyboardButton("↩️ القائمة الرئيسية", callback_data="main_menu")
+        types.InlineKeyboardButton("📞 قناة الأكواد", url="https://t.me/numhj"),
+        types.InlineKeyboardButton("↩️ رجوع", callback_data="main_menu")
     )
     return markup
 
@@ -362,7 +405,7 @@ def number_actions(prefix, alloc_id):
 def start(message):
     uid = message.from_user.id
     if get_setting("maintenance") == "1" and uid not in ADMIN_IDS:
-        bot.send_message(message.chat.id, "⚠️ البوت في وضع الصيانة.")
+        bot.send_message(message.chat.id, "⚠️ *البوت في وضع الصيانة*\nيرجى المحاولة لاحقاً.", parse_mode="Markdown")
         return
     save_user(message)
     args = message.text.split()
@@ -371,27 +414,39 @@ def start(message):
     if not check_subscription(uid):
         mk = sub_markup()
         if mk:
-            bot.send_message(message.chat.id, "🔒 اشترك في القنوات أولاً:", reply_markup=mk)
+            bot.send_message(message.chat.id, "🔒 *يجب الاشتراك في القنوات أولاً*", parse_mode="Markdown", reply_markup=mk)
         return
     photo = get_setting("welcome_photo")
-    txt = "🌍 اختر الدولة:"
+    txt = (
+        "*✨ أهلاً بك في بوت Taker OTP*\n\n"
+        "• احصل على أرقام وهمية لتفعيل حساباتك\n"
+        "• استقبل رموز التفعيل بشكل فوري\n"
+        "• ادعُ أصدقاءك واربح رصيداً\n\n"
+        "*🌍 اختر الدولة:*"
+    )
     mk = country_inline()
     if photo:
         try:
-            bot.send_photo(message.chat.id, photo, caption=txt, reply_markup=mk)
+            bot.send_photo(message.chat.id, photo, caption=txt, parse_mode="Markdown", reply_markup=mk)
         except:
-            bot.send_message(message.chat.id, txt, reply_markup=mk)
+            bot.send_message(message.chat.id, txt, parse_mode="Markdown", reply_markup=mk)
     else:
-        bot.send_message(message.chat.id, txt, reply_markup=mk)
-    bot.send_message(message.chat.id, "استخدم الأزرار:", reply_markup=main_keyboard(uid))
+        bot.send_message(message.chat.id, txt, parse_mode="Markdown", reply_markup=mk)
+    bot.send_message(message.chat.id, "استخدم الأزرار أدناه للتنقل:", reply_markup=main_keyboard(uid))
 
 @bot.callback_query_handler(func=lambda c: c.data == "check_sub")
 def check_sub(call):
     if check_subscription(call.from_user.id):
-        bot.answer_callback_query(call.id, "✅ تم التحقق")
+        bot.answer_callback_query(call.id, "✅ تم التحقق بنجاح")
         start(call.message)
     else:
-        bot.answer_callback_query(call.id, "❌ لم تشترك بعد", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ لم تشترك في جميع القنوات", show_alert=True)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("countries_"))
+def countries_page(call):
+    page = int(call.data.split("_")[1])
+    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=country_inline(page))
+    bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("getnum_"))
 def get_number(call):
@@ -402,26 +457,16 @@ def get_number(call):
         alloc_id, number = api_get_number(prefix)
         assign_number(uid, alloc_id, number, prefix)
         name = get_all_countries().get(prefix, prefix)
-        # الشكل المربع
         now = datetime.now().strftime("%H:%M")
         msg = (
-            "┌─────────────────────────────────────────────┐\n"
-            f"│ SPAMX-Bot V1.0               [المشرف]        │\n"
-            "│                                              │\n"
-            f"│ 🏳 {name[:10]:10}  {number[:15]:15} │\n"
-            f"│ #English                         🕒 {now}    │\n"
-            "├─────────────────────────────────────────────┤\n"
-            "│                                              │\n"
-            f"│        [🔑] [📑] {number[-5:]:>5}                       │\n"
-            "│                                              │\n"
-            "├─────────────────────────────────────────────┤\n"
-            "│                                              │\n"
-            "│ [📞] Number Chann  ↗️  [🏃] SPAMX-Bot  ↗️  │\n"
-            "│                                              │\n"
-            "└─────────────────────────────────────────────┘"
+            f"*✅ تم تخصيص رقم جديد*\n\n"
+            f"📞 *الرقم:* `+{number}`\n"
+            f"🌍 *الدولة:* {name}\n"
+            f"🕒 *الوقت:* {now}\n"
+            f"⏳ *الحالة:* في انتظار رمز التفعيل"
         )
         bot.edit_message_text(msg, call.message.chat.id, call.message.message_id,
-                              reply_markup=number_actions(prefix, alloc_id))
+                              parse_mode="Markdown", reply_markup=number_actions(prefix, alloc_id))
     except Exception as e:
         bot.answer_callback_query(call.id, f"❌ {str(e)[:100]}", show_alert=True)
 
@@ -441,138 +486,115 @@ def change_number(call):
         name = get_all_countries().get(prefix, prefix)
         now = datetime.now().strftime("%H:%M")
         msg = (
-            "┌─────────────────────────────────────────────┐\n"
-            f"│ SPAMX-Bot V1.0               [المشرف]        │\n"
-            "│                                              │\n"
-            f"│ 🏳 {name[:10]:10}  {number[:15]:15} │\n"
-            f"│ #English                         🕒 {now}    │\n"
-            "├─────────────────────────────────────────────┤\n"
-            "│                                              │\n"
-            f"│        [🔑] [📑] {number[-5:]:>5}                       │\n"
-            "│                                              │\n"
-            "├─────────────────────────────────────────────┤\n"
-            "│                                              │\n"
-            "│ [📞] Number Chann  ↗️  [🏃] SPAMX-Bot  ↗️  │\n"
-            "│                                              │\n"
-            "└─────────────────────────────────────────────┘"
+            f"*🔄 تم تغيير الرقم*\n\n"
+            f"📞 *الرقم الجديد:* `+{number}`\n"
+            f"🌍 *الدولة:* {name}\n"
+            f"🕒 *الوقت:* {now}\n"
+            f"⏳ *الحالة:* في انتظار رمز التفعيل"
         )
         bot.edit_message_text(msg, call.message.chat.id, call.message.message_id,
-                              reply_markup=number_actions(prefix, alloc_id))
+                              parse_mode="Markdown", reply_markup=number_actions(prefix, alloc_id))
     except Exception as e:
         bot.answer_callback_query(call.id, f"❌ {str(e)[:100]}", show_alert=True)
 
 @bot.callback_query_handler(func=lambda c: c.data in ["country_menu", "main_menu"])
 def back_menu(call):
     if call.data == "country_menu":
-        bot.edit_message_text("اختر الدولة:", call.message.chat.id, call.message.message_id, reply_markup=country_inline())
+        bot.edit_message_text("*🌍 اختر الدولة:*", call.message.chat.id, call.message.message_id,
+                              parse_mode="Markdown", reply_markup=country_inline())
     else:
         start(call.message)
 
 # ================ الكيبورد السفلي ================
 @bot.message_handler(func=lambda m: m.text in [
-    "📱 احصل على رقم", "🌍 الدول المتاحة", "📊 الإحصائيات",
-    "💰 الرصيد", "💸 سحب الرصيد", "🟢 حركة المرور"
+    "📱 احصل على رقم", "🌍 الدول المتاحة", "📊 إحصائياتي",
+    "💰 رصيدي", "🤝 دعوة الأصدقاء", "🟢 حركة المرور"
 ])
 def bottom_buttons(message):
     uid = message.from_user.id
     if message.text == "📱 احصل على رقم":
-        bot.send_message(message.chat.id, "اختر الدولة:", reply_markup=country_inline())
+        bot.send_message(message.chat.id, "*🌍 اختر الدولة:*", parse_mode="Markdown", reply_markup=country_inline())
     elif message.text == "🌍 الدول المتاحة":
         countries = get_all_countries()
-        text = "الدول المتاحة:\n" + "\n".join(f"• {name} ({prefix})" for prefix, name in countries.items())
-        bot.send_message(message.chat.id, text)
-    elif message.text == "📊 الإحصائيات":
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM users")
-        total = c.fetchone()[0]
-        c.execute("SELECT COUNT(*) FROM active_numbers WHERE status='waiting'")
-        active = c.fetchone()[0]
-        conn.close()
-        now = datetime.now().strftime("%H:%M")
+        text = "*🌍 الدول المتاحة:*\n\n" + "\n".join(f"• `{prefix}` - {name}" for prefix, name in countries.items())
+        bot.send_message(message.chat.id, text, parse_mode="Markdown")
+    elif message.text == "📊 إحصائياتي":
+        requests, otps, first, last = get_user_stats(uid)
         msg = (
-            "┌──────────────────────────────────────────────┐\n"
-            "│        « 📊 إحصائياتك »                      │\n"
-            "│                                               │\n"
-            f"│ 🔷 إجمالي المستخدمين: {total:<22} │\n"
-            f"│ 🔷 الأرقام النشطة: {active:<22} │\n"
-            f"│                                      🕒 {now} │\n"
-            "└──────────────────────────────────────────────┘"
+            "*📊 إحصائياتك*\n\n"
+            f"🔷 *إجمالي الطلبات:* `{requests}`\n"
+            f"🔷 *الأكواد المستلمة:* `{otps}`\n"
+            f"🔷 *أول استخدام:* `{format_time(first)}`\n"
+            f"🔷 *آخر استخدام:* `{format_time(last)}`"
         )
-        bot.send_message(message.chat.id, msg)
-    elif message.text == "💰 الرصيد":
-        bal = api_get_balance()
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("SELECT ref_count FROM referrals WHERE user_id=?", (uid,))
-        refs = c.fetchone()
-        ref_count = refs[0] if refs else 0
-        conn.close()
-        now = datetime.now().strftime("%H:%M")
+        bot.send_message(message.chat.id, msg, parse_mode="Markdown")
+    elif message.text == "💰 رصيدي":
+        bal, refs = get_user_balance(uid)
+        site_bal = api_get_balance()
         msg = (
-            "┌──────────────────────────────────────────────┐\n"
-            "│                 💰 الرصيد                     │\n"
-            "│                                               │\n"
-            f"│  📊 رصيدك: USDT {bal:<27} │\n"
-            f"│  👤 الإحالات: {ref_count:<27} │\n"
-            "│  🏦 الحد الأدنى للسحب: USDT 18.0              │\n"
-            "│ ───────────────────────────────────────────── │\n"
-            "│  😄 ربح لكل إحالة: USDT 0.05                  │\n"
-            "│  🚀 ادعُ أصدقاءك لزيادة رصيدك                 │\n"
-            f"│                                      🕒 {now} │\n"
-            "└──────────────────────────────────────────────┘"
+            "*💰 رصيدك*\n\n"
+            f"💎 *رصيدك:* `{bal:.3f} USDT`\n"
+            f"👤 *الإحالات:* `{refs}`\n"
+            f"🏦 *رصيد الموقع:* `{site_bal}`\n"
+            f"🏦 *الحد الأدنى للسحب:* `18.0 USDT`\n\n"
+            f"💡 *اربح `0.05 USDT` عن كل صديق تدعوه*"
         )
-        bot.send_message(message.chat.id, msg)
-    elif message.text == "💸 سحب الرصيد":
-        bot.send_message(message.chat.id, "لطلب سحب الرصيد تواصل مع @hackerTaker")
+        bot.send_message(message.chat.id, msg, parse_mode="Markdown")
+    elif message.text == "🤝 دعوة الأصدقاء":
+        link = get_ref_link(uid)
+        msg = (
+            "*🤝 دعوة الأصدقاء*\n\n"
+            f"🔗 *رابط الدعوة الخاص بك:*\n`{link}`\n\n"
+            f"💰 *الربح:* `0.05 USDT` عن كل صديق\n"
+            f"📤 *شارك الرابط مع أصدقائك*"
+        )
+        bot.send_message(message.chat.id, msg, parse_mode="Markdown")
     elif message.text == "🟢 حركة المرور":
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("SELECT prefix, COUNT(*) FROM active_numbers WHERE status='waiting' GROUP BY prefix")
+        c.execute("SELECT prefix, COUNT(*) FROM active_numbers WHERE status='waiting' GROUP BY prefix ORDER BY COUNT(*) DESC LIMIT 5")
         rows = c.fetchall()
+        conn.close()
         if not rows:
-            text = "لا توجد أرقام نشطة"
+            text = "*🟢 حركة المرور*\n\nلا توجد أرقام نشطة حالياً."
         else:
-            now = datetime.now().strftime("%H:%M")
-            lines = []
             total = sum(r[1] for r in rows)
-            for i, (prefix, cnt) in enumerate(rows[:5], 1):
+            lines = []
+            for i, (prefix, cnt) in enumerate(rows, 1):
                 name = get_all_countries().get(prefix, prefix)
                 perc = (cnt / total) * 100 if total else 0
-                lines.append(f"│ {i}️⃣ {name} → {perc:.1f}%")
-            msg = (
-                "┌──────────────────────────────────────────┐\n"
-                "│ 🟢 حركة المرور                11:09 ✓✓   │\n"
-                "├──────────────────────────────────────────┤\n"
-                "│ 🟢 Live Traffic                         │\n"
-                "│                                          │\n"
-                "│ 🗓️ Window: Last 5 minutes                │\n"
-                "│ ✅ Results Sent: 100%                    │\n"
-                "│ 🏆 Top Country: -                        │\n"
-                "│                                          │\n"
-                "│ 🌍 Top Countries:                        │\n"
-            ) + "\n".join(lines) + f"\n│                                  🕒 {now} │\n" + (
-                "├──────────────────────────────────────────┤\n"
-                "│             [🔄] Refresh                  │\n"
-                "└──────────────────────────────────────────┘"
-            )
-            bot.send_message(message.chat.id, msg)
+                lines.append(f"{i}️⃣ `{name}` → `{perc:.1f}%`")
+            text = "*🟢 حركة المرور*\n\n" + "\n".join(lines)
+        bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
 # ================ لوحة الإدارة ================
-@bot.message_handler(func=lambda m: m.text == "⚙️ لوحة الإدارة" and m.from_user.id in ADMIN_IDS)
+@bot.message_handler(func=lambda m: m.text == "⚙️ لوحة التحكم" and m.from_user.id in ADMIN_IDS)
 def admin_panel(message):
-    markup = types.InlineKeyboardMarkup()
-    status = "🟢 مفعل" if get_setting("maintenance") != "1" else "🔴 صيانة"
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    status = "🟢 مفتوح" if get_setting("maintenance") != "1" else "🔴 صيانة"
     markup.add(types.InlineKeyboardButton(f"حالة البوت: {status}", callback_data="toggle_maint"))
-    markup.add(types.InlineKeyboardButton("➕ إضافة دولة", callback_data="add_country"))
-    markup.add(types.InlineKeyboardButton("➖ حذف دولة", callback_data="del_country"))
-    markup.add(types.InlineKeyboardButton("📢 إذاعة", callback_data="broadcast"))
-    markup.add(types.InlineKeyboardButton("🚫 حظر / ✅ فك", callback_data="ban_unban"))
-    markup.add(types.InlineKeyboardButton("🔗 الاشتراك الإجباري", callback_data="force_sub"))
-    markup.add(types.InlineKeyboardButton("🖼️ صورة الترحيب", callback_data="set_photo"))
-    markup.add(types.InlineKeyboardButton("🗑️ مسح البيانات", callback_data="clear_data"))
-    markup.add(types.InlineKeyboardButton("↩️ خروج", callback_data="main_menu"))
-    bot.send_message(message.chat.id, "<b>لوحة التحكم</b>", parse_mode="HTML", reply_markup=markup)
+    markup.add(
+        types.InlineKeyboardButton("➕ إضافة دولة", callback_data="add_country"),
+        types.InlineKeyboardButton("➖ حذف دولة", callback_data="del_country")
+    )
+    markup.add(
+        types.InlineKeyboardButton("📢 إذاعة", callback_data="broadcast"),
+        types.InlineKeyboardButton("👥 المستخدمين", callback_data="users_list")
+    )
+    markup.add(
+        types.InlineKeyboardButton("🚫 حظر", callback_data="ban"),
+        types.InlineKeyboardButton("✅ فك حظر", callback_data="unban")
+    )
+    markup.add(
+        types.InlineKeyboardButton("🔗 الاشتراك", callback_data="force_sub"),
+        types.InlineKeyboardButton("🖼️ صورة الترحيب", callback_data="set_photo")
+    )
+    markup.add(
+        types.InlineKeyboardButton("🗑️ مسح البيانات", callback_data="clear_data"),
+        types.InlineKeyboardButton("↩️ خروج", callback_data="main_menu")
+    )
+    msg = "*⚙️ لوحة التحكم*\n\nمرحباً بك في لوحة إدارة البوت."
+    bot.send_message(message.chat.id, msg, parse_mode="Markdown", reply_markup=markup)
 
 user_states = {}
 
@@ -586,7 +608,8 @@ def toggle_maint(call):
 @bot.callback_query_handler(func=lambda c: c.data == "add_country" and c.from_user.id in ADMIN_IDS)
 def add_country_start(call):
     user_states[call.from_user.id] = "add_country_prefix"
-    bot.edit_message_text("أرسل prefix الدولة (مثل 24910):", call.message.chat.id, call.message.message_id)
+    msg = "*➕ إضافة دولة*\n\nأرسل Prefix الدولة (مثال: `24910`):"
+    bot.edit_message_text(msg, call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "add_country_prefix")
 def add_country_prefix(message):
@@ -599,7 +622,7 @@ def add_country_name(message):
     prefix = user_states[message.from_user.id][1]
     name = message.text.strip()
     add_country(prefix, name)
-    bot.send_message(message.chat.id, f"✅ تمت إضافة {name} ({prefix})")
+    bot.send_message(message.chat.id, f"✅ تمت إضافة `{name}` ({prefix})", parse_mode="Markdown")
     del user_states[message.from_user.id]
 
 @bot.callback_query_handler(func=lambda c: c.data == "del_country" and c.from_user.id in ADMIN_IDS)
@@ -609,19 +632,20 @@ def del_country_start(call):
     for prefix, name in countries.items():
         markup.add(types.InlineKeyboardButton(f"{name} ({prefix})", callback_data=f"delcountry_{prefix}"))
     markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_back"))
-    bot.edit_message_text("اختر الدولة للحذف:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text("*➖ حذف دولة*\nاختر الدولة:", call.message.chat.id, call.message.message_id,
+                          parse_mode="Markdown", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("delcountry_") and c.from_user.id in ADMIN_IDS)
 def del_country_confirm(call):
     prefix = call.data.split("_")[1]
     delete_country(prefix)
-    bot.answer_callback_query(call.id, "تم الحذف")
+    bot.answer_callback_query(call.id, "✅ تم الحذف")
     admin_panel(call.message)
 
 @bot.callback_query_handler(func=lambda c: c.data == "broadcast" and c.from_user.id in ADMIN_IDS)
 def broadcast_start(call):
     user_states[call.from_user.id] = "broadcast"
-    bot.edit_message_text("أرسل الرسالة للإذاعة:", call.message.chat.id, call.message.message_id)
+    bot.edit_message_text("*📢 إذاعة*\nأرسل الرسالة:", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "broadcast")
 def broadcast_exec(message):
@@ -634,21 +658,29 @@ def broadcast_exec(message):
             time.sleep(0.05)
         except:
             pass
-    bot.send_message(message.chat.id, f"✅ تم الإرسال إلى {cnt} مستخدم")
+    bot.send_message(message.chat.id, f"✅ تم الإرسال إلى `{cnt}` مستخدم", parse_mode="Markdown")
     del user_states[message.from_user.id]
 
-@bot.callback_query_handler(func=lambda c: c.data == "ban_unban" and c.from_user.id in ADMIN_IDS)
-def ban_unban_menu(call):
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🚫 حظر", callback_data="ban"))
-    markup.add(types.InlineKeyboardButton("✅ فك حظر", callback_data="unban"))
-    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_back"))
-    bot.edit_message_text("اختر:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+@bot.callback_query_handler(func=lambda c: c.data == "users_list" and c.from_user.id in ADMIN_IDS)
+def users_list(call):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT user_id, username, first_name FROM users WHERE is_banned=0 ORDER BY user_id DESC LIMIT 20")
+    rows = c.fetchall()
+    conn.close()
+    if not rows:
+        msg = "لا يوجد مستخدمون بعد."
+    else:
+        msg = "*👥 آخر المستخدمين:*\n\n"
+        for uid, uname, fname in rows:
+            name = f"@{uname}" if uname else fname or str(uid)
+            msg += f"• `{uid}` - {name}\n"
+    bot.edit_message_text(msg, call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda c: c.data == "ban" and c.from_user.id in ADMIN_IDS)
 def ban_prompt(call):
     user_states[call.from_user.id] = "ban"
-    bot.edit_message_text("أرسل ID المستخدم:", call.message.chat.id, call.message.message_id)
+    bot.edit_message_text("*🚫 حظر*\nأرسل ID المستخدم:", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "ban")
 def ban_exec(message):
@@ -659,15 +691,15 @@ def ban_exec(message):
         c.execute("UPDATE users SET is_banned=1 WHERE user_id=?", (uid,))
         conn.commit()
         conn.close()
-        bot.send_message(message.chat.id, f"تم حظر {uid}")
+        bot.send_message(message.chat.id, f"✅ تم حظر `{uid}`", parse_mode="Markdown")
     except:
-        bot.send_message(message.chat.id, "خطأ في المعرف")
+        bot.send_message(message.chat.id, "❌ معرف غير صحيح")
     del user_states[message.from_user.id]
 
 @bot.callback_query_handler(func=lambda c: c.data == "unban" and c.from_user.id in ADMIN_IDS)
 def unban_prompt(call):
     user_states[call.from_user.id] = "unban"
-    bot.edit_message_text("أرسل ID المستخدم:", call.message.chat.id, call.message.message_id)
+    bot.edit_message_text("*✅ فك حظر*\nأرسل ID المستخدم:", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "unban")
 def unban_exec(message):
@@ -678,9 +710,9 @@ def unban_exec(message):
         c.execute("UPDATE users SET is_banned=0 WHERE user_id=?", (uid,))
         conn.commit()
         conn.close()
-        bot.send_message(message.chat.id, f"تم فك حظر {uid}")
+        bot.send_message(message.chat.id, f"✅ تم فك حظر `{uid}`", parse_mode="Markdown")
     except:
-        bot.send_message(message.chat.id, "خطأ في المعرف")
+        bot.send_message(message.chat.id, "❌ معرف غير صحيح")
     del user_states[message.from_user.id]
 
 @bot.callback_query_handler(func=lambda c: c.data == "force_sub" and c.from_user.id in ADMIN_IDS)
@@ -696,18 +728,19 @@ def force_sub_menu(call):
         markup.add(types.InlineKeyboardButton(f"{st} {ch[2]}", callback_data=f"editch_{ch[0]}"))
     markup.add(types.InlineKeyboardButton("➕ إضافة", callback_data="addch"))
     markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_back"))
-    bot.edit_message_text("قنوات الاشتراك:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text("*🔗 قنوات الاشتراك الإجباري*", call.message.chat.id, call.message.message_id,
+                          parse_mode="Markdown", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda c: c.data == "addch" and c.from_user.id in ADMIN_IDS)
 def addch_start(call):
     user_states[call.from_user.id] = "addch_url"
-    bot.edit_message_text("أرسل رابط القناة:", call.message.chat.id, call.message.message_id)
+    bot.edit_message_text("*➕ إضافة قناة*\nأرسل رابط القناة:", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "addch_url")
 def addch_url(message):
     url = message.text.strip()
     user_states[message.from_user.id] = ("addch_desc", url)
-    bot.send_message(message.chat.id, "أرسل وصف القناة:")
+    bot.send_message(message.chat.id, "أرسل وصفاً للقناة:")
 
 @bot.message_handler(func=lambda m: isinstance(user_states.get(m.from_user.id), tuple) and user_states[m.from_user.id][0] == "addch_desc")
 def addch_desc(message):
@@ -734,12 +767,12 @@ def editch(call):
 @bot.callback_query_handler(func=lambda c: c.data == "set_photo" and c.from_user.id in ADMIN_IDS)
 def set_photo_prompt(call):
     user_states[call.from_user.id] = "photo"
-    bot.edit_message_text("أرسل الصورة:", call.message.chat.id, call.message.message_id)
+    bot.edit_message_text("*🖼️ صورة الترحيب*\nأرسل الصورة:", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.message_handler(content_types=['photo'], func=lambda m: user_states.get(m.from_user.id) == "photo")
 def save_photo(message):
     set_setting("welcome_photo", message.photo[-1].file_id)
-    bot.send_message(message.chat.id, "✅ تم حفظ الصورة")
+    bot.send_message(message.chat.id, "✅ تم حفظ صورة الترحيب")
     del user_states[message.from_user.id]
 
 @bot.callback_query_handler(func=lambda c: c.data == "clear_data" and c.from_user.id in ADMIN_IDS)
@@ -752,7 +785,7 @@ def clear_data(call):
     c.execute("DELETE FROM referrals")
     conn.commit()
     conn.close()
-    bot.answer_callback_query(call.id, "تم مسح البيانات")
+    bot.answer_callback_query(call.id, "✅ تم مسح جميع البيانات")
     admin_panel(call.message)
 
 @bot.callback_query_handler(func=lambda c: c.data == "admin_back" and c.from_user.id in ADMIN_IDS)
@@ -768,16 +801,32 @@ def otp_loop():
                     status, otp = api_check_otp(number)
                     if status == "success" and otp:
                         service = detect_service(otp)
+                        country = get_all_countries().get(prefix, prefix)
                         # إرسال للمستخدم
                         if uid:
                             try:
-                                bot.send_message(uid, f"🔐 الكود: {otp}\nالخدمة: {service}\nالرقم: {number}")
+                                msg = (
+                                    f"*🔐 تم استقبال رمز التفعيل*\n\n"
+                                    f"📞 *الرقم:* `+{number}`\n"
+                                    f"🌍 *الدولة:* {country}\n"
+                                    f"🛠 *التطبيق:* {service}\n"
+                                    f"🔢 *الكود:* `{otp}`\n\n"
+                                    f"انسخ الكود واستخدمه فوراً"
+                                )
+                                bot.send_message(uid, msg, parse_mode="Markdown")
                             except:
                                 pass
                         # إرسال للجروب
                         for cid in CHAT_IDS:
                             try:
-                                bot.send_message(cid, f"📱 رقم: {mask_number(number)}\n🔢 الكود: {otp}\n🛠 الخدمة: {service}")
+                                msg = (
+                                    f"*🔐 كود جديد*\n\n"
+                                    f"📞 `{mask_number(number)}`\n"
+                                    f"🌍 {country}\n"
+                                    f"🛠 {service}\n"
+                                    f"🔢 `{otp}`"
+                                )
+                                bot.send_message(cid, msg, parse_mode="Markdown")
                             except:
                                 pass
                         save_otp(alloc_id, otp)
@@ -798,7 +847,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot Running"
+    return "Taker OTP Bot Running"
 
 @app.route('/health')
 def health():
