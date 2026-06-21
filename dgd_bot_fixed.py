@@ -1,7 +1,6 @@
 # ======================================================================================
-# 𝘿𝙀𝙑𝙄𝙇 𝙉𝙐𝙈𝘽𝙀𝙍 - XWD SMS (النسخة النهائية العملاقة المتكاملة)
+# 𝘿𝙀𝙑𝙄𝙇 𝙉𝙐𝙈𝘽𝙀𝙍 - XWD SMS (نسخة نهائية، أزرار الدول تعمل 100%)
 # المطور: hacker Taker
-# الربط الكامل مع xwdsms.org
 # ======================================================================================
 
 import time
@@ -20,7 +19,7 @@ import telebot
 from telebot import types
 
 # ======================================================================================
-# إعدادات التسجيل
+# إعدادات التسجيل (للمتابعة)
 # ======================================================================================
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -51,14 +50,14 @@ user_states = {}
 BOT_ACTIVE = True
 
 # ======================================================================================
-# قائمة الدول المتاحة (الرينجات التي زودتني بها)
+# قائمة الدول المتاحة
 # ======================================================================================
 AVAILABLE_COUNTRIES = {
     "22501": ("ساحل العاج", "🇨🇮", ["2250765XXXXX"]),
     "49155": ("ألمانيا", "🇩🇪", ["4915511382XXXX"]),
     "26134": ("مدغشقر", "🇲🇬", ["26134143XXXX"]),
     "23762": ("الكاميرون", "🇨🇲", ["237621XXXXXX"]),
-    "22178": ("السنغал", "🇸🇳", ["221785XXXXXX"]),
+    "22178": ("السنغال", "🇸🇳", ["221785XXXXXX"]),
     "22901": ("بنين", "🇧🇯", ["2290192273XXXX"]),
     "23276": ("سيراليون", "🇸🇱", ["23276XXXXXX"]),
     "22898": ("توغو", "🇹🇬", ["2289871XXXXXX"]),
@@ -66,11 +65,6 @@ AVAILABLE_COUNTRIES = {
     "23490": ("نيجيريا", "🇳🇬", ["23490XXXXXX"]),
     "25471": ("كينيا", "🇰🇪", ["25471XXXXXX"]),
 }
-
-# تحويل القاموس ليتوافق مع نظام الرينجات
-DEFAULT_RANGES = {}
-for code, (_, _, ranges) in AVAILABLE_COUNTRIES.items():
-    DEFAULT_RANGES[code] = ranges
 
 # ======================================================================================
 # قاعدة البيانات (SQLite)
@@ -428,7 +422,7 @@ def force_sub_markup():
     return markup
 
 # ======================================================================================
-# دوال API للموقع الجديد (XWD SMS)
+# دوال API للموقع الجديد (XWD SMS) - مع معالجة الأخطاء
 # ======================================================================================
 def xwd_get_number(range_str):
     """جلب رقم جديد من XWD"""
@@ -440,13 +434,14 @@ def xwd_get_number(range_str):
     payload = {"range": range_str}
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=30)
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            raise Exception(f"خطأ في الخادم، الكود: {resp.status_code}")
         data = resp.json()
         if not data.get("success"):
             raise Exception(data.get("message", "XWD API Error"))
         number = data.get("number")
         if not number:
-            raise Exception("لم يتم استلام رقم")
+            raise Exception("لم يتم استلام رقم من الخادم")
         return str(number).strip()
     except Exception as e:
         logger.error(f"XWD get_number failed: {e}")
@@ -462,7 +457,8 @@ def xwd_check_otp(phone):
     params = {"number": phone}
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=30)
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            raise Exception(f"خطأ في الخادم، الكود: {resp.status_code}")
         data = resp.json()
         if not data.get("success"):
             raise Exception(data.get("message", "XWD API Error"))
@@ -532,7 +528,7 @@ def mask_number(number):
     num = str(number)
     if len(num) <= 8:
         return num
-    return num[:4] + "••••" + num[-4:]
+    return "XXXX" + num[-4:]
 
 def extract_otp(text):
     patterns = [r'(?:code|رمز|كود|verification|تحقق|otp|pin)[:\s]+[‎]?(\d{4,8})', r'\b(\d{4,8})\b']
@@ -686,14 +682,14 @@ def check_active_numbers_loop():
                         remove_active_number(number)
                     else:
                         logger.error(f"⚠️ فحص {number} فشل: {e}")
-            time.sleep(3) # سرعة فائقة (فحص كل 3 ثوان)
+            time.sleep(3)
         except Exception as e:
             logger.error(f"❌ خطأ في حلقة الفحص: {e}")
             traceback.print_exc()
             time.sleep(10)
 
 # ======================================================================================
-# أوامر البوت
+# أوامر البوت (الأزرار)
 # ======================================================================================
 def is_admin(user_id):
     return user_id in ADMIN_IDS
@@ -788,73 +784,76 @@ def check_sub(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("country_"))
 def handle_country(call):
+    # 1. إشعار فوري للمستخدم بأن الزر يعمل
+    try:
+        bot.answer_callback_query(call.id, "📡 جاري جلب الرقم...")
+    except:
+        pass
+    
     try:
         user_id = call.from_user.id
-        cc = call.data.split("_")[1]
-        if is_banned(user_id) or not force_sub_check(user_id):
-            return
+        if is_banned(user_id): return
+        
+        parts = call.data.split("_")
+        if len(parts) < 2: return
+        cc = parts[1]
+        
         if cc not in AVAILABLE_COUNTRIES:
             bot.answer_callback_query(call.id, "❌ دولة غير مدعومة.", show_alert=True)
             return
+        
         ranges = AVAILABLE_COUNTRIES[cc][2]
         if not ranges:
-            bot.answer_callback_query(call.id, "❌ لا توجد رينجات.", show_alert=True)
+            bot.answer_callback_query(call.id, "❌ لا توجد رينجات متاحة.", show_alert=True)
             return
+
         range_str = ranges[0]
+        
+        # جلب الرقم من الـ API
         try:
             number = xwd_get_number(range_str)
         except Exception as e:
-            bot.answer_callback_query(call.id, f"❌ فشل جلب الرقم: {str(e)}", show_alert=True)
+            bot.answer_callback_query(call.id, f"❌ فشل جلب الرقم: {str(e)[:80]}", show_alert=True)
             return
+        
         clean_num = re.sub(r'\D', '', number)
         old = get_user(user_id)
         if old and old[5]:
             release_number(old[5])
             remove_active_number(old[5])
+        
         assign_number_to_user(user_id, clean_num)
         save_user(user_id, country_code=cc, assigned_number=clean_num)
         add_active_number(clean_num, cc, 1, assigned_to=user_id)
+        
         name_ar, flag = get_country_info(cc)
         msg = f"◈ الرقم: <code>+{clean_num}</code>\n◈ الدولة: {flag} {name_ar}\n◈ الحالة: ⏳ في انتظار OTP..."
+        
         markup = show_number_actions(call, clean_num, cc)
-        bot.edit_message_text(msg, call.message.chat.id, call.message.message_id, parse_mode="HTML", reply_markup=markup)
-        bot.answer_callback_query(call.id, "✅ تم التخصيص")
+        try:
+            bot.edit_message_text(msg, call.message.chat.id, call.message.message_id, parse_mode="HTML", reply_markup=markup)
+        except Exception as e:
+            bot.send_message(call.message.chat.id, msg, parse_mode="HTML", reply_markup=markup)
+        
+        bot.answer_callback_query(call.id, "✅ تم تخصيص الرقم بنجاح!")
     except Exception as e:
         logger.error(f"handle_country error: {e}")
+        try:
+            bot.answer_callback_query(call.id, "❌ خطأ غير متوقع، حاول مرة أخرى.", show_alert=True)
+        except:
+            pass
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("change_"))
 def change_number(call):
     try:
         user_id = call.from_user.id
         cc = call.data.split("_")[1]
-        if is_banned(user_id) or not force_sub_check(user_id):
-            return
-        if cc not in AVAILABLE_COUNTRIES:
-            bot.answer_callback_query(call.id, "❌ دولة غير مدعومة.", show_alert=True)
-            return
-        ranges = AVAILABLE_COUNTRIES[cc][2]
-        if not ranges:
-            bot.answer_callback_query(call.id, "❌ لا توجد رينجات.", show_alert=True)
-            return
-        range_str = ranges[0]
-        try:
-            number = xwd_get_number(range_str)
-        except Exception as e:
-            bot.answer_callback_query(call.id, f"❌ فشل: {str(e)}", show_alert=True)
-            return
-        clean_num = re.sub(r'\D', '', number)
-        old = get_user(user_id)
-        if old and old[5]:
-            release_number(old[5])
-            remove_active_number(old[5])
-        assign_number_to_user(user_id, clean_num)
-        save_user(user_id, assigned_number=clean_num)
-        add_active_number(clean_num, cc, 1, assigned_to=user_id)
-        name_ar, flag = get_country_info(cc)
-        msg = f"◈ الرقم: <code>+{clean_num}</code>\n◈ الدولة: {flag} {name_ar}\n◈ الحالة: ⏳ في انتظار OTP..."
-        markup = show_number_actions(call, clean_num, cc)
-        bot.edit_message_text(msg, call.message.chat.id, call.message.message_id, parse_mode="HTML", reply_markup=markup)
-        bot.answer_callback_query(call.id, "✅ تم تغيير الرقم")
+        if is_banned(user_id): return
+        if cc not in AVAILABLE_COUNTRIES: return
+        
+        # إعادة توجيه لمعالج الدولة
+        call.data = f"country_{cc}"
+        handle_country(call)
     except Exception as e:
         logger.error(f"change_number error: {e}")
 
@@ -1352,7 +1351,7 @@ def confirm_clear_db(call):
     admin_panel(call)
 
 # ======================================================================================
-# خادم ويب Flask (لضمان عدم توقف البوت على Render)
+# خادم ويب Flask (للحفاظ على البوت)
 # ======================================================================================
 app = Flask(__name__)
 
@@ -1381,12 +1380,12 @@ def run_bot():
             time.sleep(5)
 
 if __name__ == "__main__":
-    # تشغيل خادم الويب (مطلوب من Render)
+    # تشغيل خادم الويب
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
     logger.info("✅ خادم الويب يعمل على المنفذ 8080")
     
-    # تشغيل الحلقة الخلفية لجلب الـ OTP
+    # تشغيل الحلقة الخلفية
     check_thread = threading.Thread(target=check_active_numbers_loop, daemon=True)
     check_thread.start()
     logger.info("⚡ حلقة جلب OTP تعمل بسرعة فائقة (فحص كل 3 ثوانٍ)")
