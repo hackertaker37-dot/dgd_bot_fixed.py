@@ -16,7 +16,7 @@ CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
 DB_PATH = os.environ.get("DB_PATH", "xwd_bot.db")
 
-XWD_API_KEY = "b2f34f1d36cd84328d9650ce65cfb03a"
+XWD_API_KEY = "9861618abcb119e317c6051000a5997c"
 XWD_BASE_URL = "https://xwdsms.org/api/v1"
 
 bot = telebot.TeleBot(BOT_TOKEN)
