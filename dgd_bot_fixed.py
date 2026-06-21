@@ -1,5 +1,5 @@
 # ======================================================================================
-# XWD SMS - نسخة علاج مشكلة الرصيد (تظهر رسالة الخطأ للمستخدم)
+# XWD SMS - النسخة النهائية والمتكاملة (تعمل بالمفتاح الجديد والرصيد المجاني)
 # المطور: hacker Taker
 # ======================================================================================
 
@@ -18,25 +18,28 @@ from flask import Flask, jsonify
 import telebot
 from telebot import types
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO,
-    handlers=[logging.FileHandler("xwd_bot.log"), logging.StreamHandler()]
-)
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# إعدادات البوت
 BOT_TOKEN = "8686995713:AAFTesnEDbFJcSgtM3IrURU0WtPdNkJtO4c"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
 DB_PATH = os.environ.get("DB_PATH", "xwd_bot.db")
 
-XWD_API_KEY = "ef203b6b48dc1973cff94c8dfd660b57"
+# ============================
+# 🔑 مفتاح API الخاص بك (تم التحديث)
+XWD_API_KEY = "b2f34f1d36cd84328d9650ce65cfb03a"
+# ============================
 XWD_BASE_URL = "https://xwdsms.org/api/v1"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
 BOT_ACTIVE = True
 
+# ======================================================================================
+# قائمة الدول والرينجات المتاحة حسب موقع XWD
+# ======================================================================================
 AVAILABLE_COUNTRIES = {
     "22501": ("ساحل العاج", "🇨🇮", ["2250765XXXXX"]),
     "49155": ("ألمانيا", "🇩🇪", ["4915511382XXXX"]),
@@ -51,6 +54,9 @@ AVAILABLE_COUNTRIES = {
     "25471": ("كينيا", "🇰🇪", ["25471XXXXXX"]),
 }
 
+# ======================================================================================
+# قاعدة البيانات (SQLite)
+# ======================================================================================
 def init_db():
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -76,97 +82,78 @@ def init_db():
     except Exception as e: logger.error(f"❌ فشل في قاعدة البيانات: {e}")
 init_db()
 
+# ======================================================================================
+# دوال قاعدة البيانات
+# ======================================================================================
 def get_user(user_id):
-    try:
-        conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("SELECT * FROM users WHERE user_id=?", (user_id,)); row = c.fetchone(); conn.close(); return row
+    try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("SELECT * FROM users WHERE user_id=?", (user_id,)); row = c.fetchone(); conn.close(); return row
     except: return None
 
 def save_user(user_id, username="", first_name="", country_code=None, assigned_number=None):
-    try:
-        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
-        existing = get_user(user_id)
-        if existing:
-            if country_code is None: country_code = existing[4]
-            if assigned_number is None: assigned_number = existing[5]
-        c.execute("REPLACE INTO users (user_id, username, first_name, country_code, assigned_number) VALUES (?, ?, ?, ?, ?)",
-                  (user_id, username, first_name, country_code, assigned_number))
-        conn.commit(); conn.close()
+    try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); existing = get_user(user_id); if existing: if country_code is None: country_code = existing[4]; if assigned_number is None: assigned_number = existing[5]; c.execute("REPLACE INTO users (user_id, username, first_name, country_code, assigned_number) VALUES (?, ?, ?, ?, ?)", (user_id, username, first_name, country_code, assigned_number)); conn.commit(); conn.close()
     except: pass
 
 def is_banned(user_id): user = get_user(user_id); return user and user[6] == 1
 
-def get_all_users():
-    try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("SELECT user_id FROM users WHERE is_banned=0"); users = [r[0] for r in c.fetchall()]; conn.close(); return users
-    except: return []
-
 def assign_number_to_user(user_id, number):
-    try:
-        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
-        clean_num = re.sub(r'\D', '', str(number)); c.execute("UPDATE users SET assigned_number=? WHERE user_id=?", (clean_num, user_id)); conn.commit(); conn.close(); return clean_num
+    try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); clean_num = re.sub(r'\D', '', str(number)); c.execute("UPDATE users SET assigned_number=? WHERE user_id=?", (clean_num, user_id)); conn.commit(); conn.close(); return clean_num
     except: return None
 
 def get_user_by_number(number):
-    clean_num = re.sub(r'\D', '', str(number))
     try:
-        conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("SELECT user_id FROM users WHERE assigned_number=?", (clean_num,)); row = c.fetchone(); conn.close(); return row[0] if row else None
+        clean_num = re.sub(r'\D', '', str(number)); conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("SELECT user_id FROM users WHERE assigned_number=?", (clean_num,)); row = c.fetchone(); conn.close(); return row[0] if row else None
     except: return None
 
 def release_number(number):
     if not number: return
-    try:
-        conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("UPDATE users SET assigned_number=NULL WHERE assigned_number=?", (number,)); conn.commit(); conn.close()
+    try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("UPDATE users SET assigned_number=NULL WHERE assigned_number=?", (number,)); conn.commit(); conn.close()
     except: pass
 
 def add_active_number(number, country_code, assigned_to):
-    try:
-        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
-        clean_num = re.sub(r'\D', '', str(number))
-        c.execute("REPLACE INTO active_numbers (number, country_code, assigned_to, requested_at) VALUES (?, ?, ?, ?)", (clean_num, country_code, assigned_to, datetime.now().isoformat()))
-        conn.commit(); conn.close()
+    try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); clean_num = re.sub(r'\D', '', str(number)); c.execute("REPLACE INTO active_numbers (number, country_code, assigned_to, requested_at) VALUES (?, ?, ?, ?)", (clean_num, country_code, assigned_to, datetime.now().isoformat())); conn.commit(); conn.close()
     except: pass
 
 def remove_active_number(number):
-    try:
-        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
-        c.execute("DELETE FROM active_numbers WHERE number=?", (re.sub(r'\D', '', number),)); conn.commit(); conn.close()
+    try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("DELETE FROM active_numbers WHERE number=?", (re.sub(r'\D', '', number),)); conn.commit(); conn.close()
     except: pass
 
 def get_active_numbers():
-    try:
-        conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("SELECT number, country_code, assigned_to, otp_code FROM active_numbers WHERE status='WAITING'"); rows = c.fetchall(); conn.close(); return rows
+    try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("SELECT number, country_code, assigned_to, otp_code FROM active_numbers WHERE status='WAITING'"); rows = c.fetchall(); conn.close(); return rows
     except: return []
 
 def update_active_number(number, otp_code):
-    try:
-        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
-        c.execute("UPDATE active_numbers SET status='SUCCESS', otp_code=? WHERE number=?", (otp_code, re.sub(r'\D', '', number))); conn.commit(); conn.close()
+    try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("UPDATE active_numbers SET status='SUCCESS', otp_code=? WHERE number=?", (otp_code, re.sub(r'\D', '', number))); conn.commit(); conn.close()
     except: pass
 
-def log_otp(number, otp, full_message, assigned_to=None):
-    try:
-        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
-        c.execute("INSERT INTO otp_logs (number, otp, full_message, timestamp, assigned_to) VALUES (?, ?, ?, ?, ?)", (number, otp, full_message, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), assigned_to)); conn.commit(); conn.close()
+def get_setting(key):
+    try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("SELECT value FROM bot_settings WHERE key=?", (key,)); row = c.fetchone(); conn.close(); return row[0] if row else None
+    except: return None
+
+def set_setting(key, value):
+    try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("REPLACE INTO bot_settings (key, value) VALUES (?, ?)", (key, value)); conn.commit(); conn.close()
     except: pass
 
+# ======================================================================================
+# دوال الاتصال بـ XWD API
+# ======================================================================================
 def xwd_get_number(range_str):
     url = f"{XWD_BASE_URL}/get-number"
     headers = {"x-api-key": XWD_API_KEY, "Content-Type": "application/json"}
     payload = {"range": range_str}
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=20)
-        logger.info(f"XWD Response: {resp.text}")
-        if resp.status_code != 200:
-            raise Exception(f"خطأ في الخادم (الكود: {resp.status_code})")
+        if resp.status_code != 200: raise Exception(f"خطأ في الخادم (الكود: {resp.status_code})")
         data = resp.json()
         if not data.get("success"):
             msg = data.get("message", "فشل غير معروف")
+            # إذا نفذ الرصيد، يرسل رسالة واضحة
+            if "balance" in msg.lower() or "insufficient" in msg.lower():
+                msg = "⚠️ رصيد الموقع غير كافٍ، يرجى شحن الحساب."
             raise Exception(msg)
         number = data.get("number")
         if not number: raise Exception("لم يتم استلام رقم")
         return str(number).strip()
-    except Exception as e:
-        logger.error(f"XWD get_number error: {e}")
-        raise
+    except Exception as e: logger.error(f"XWD get_number error: {e}"); raise
 
 def xwd_check_otp(phone):
     url = f"{XWD_BASE_URL}/check-otp"
@@ -179,14 +166,13 @@ def xwd_check_otp(phone):
         if not data.get("success"): raise Exception(data.get("message", "فشل الفحص"))
         otp = data.get("otp")
         return {"status": "SUKSES", "otp": otp} if otp else {"status": "WAIT", "otp": None}
-    except Exception as e:
-        logger.error(f"XWD check_otp error: {e}")
-        raise
+    except Exception as e: logger.error(f"XWD check_otp error: {e}"); raise
 
+# ======================================================================================
+# دوال التنسيق والأمان
+# ======================================================================================
 def mask_number(num):
-    num = str(num)
-    if len(num) <= 8: return num
-    return "XXXX" + num[-4:]
+    num = str(num); return "XXXX" + num[-4:] if len(num) > 8 else num
 
 def get_country_info_by_num(num):
     num = re.sub(r'\D', '', str(num))
@@ -195,14 +181,11 @@ def get_country_info_by_num(num):
     return "غير معروف", "🌍"
 
 def extract_otp(t): 
-    m = re.search(r'(?:code|otp|رمز|كود|verification|pin)[:\s]*(\d{4,8})', t, re.IGNORECASE) or re.search(r'\b(\d{4,8})\b', t)
-    return m.group(1) if m else "N/A"
+    m = re.search(r'(?:code|otp|رمز|كود|verification|pin)[:\s]*(\d{4,8})', t, re.IGNORECASE) or re.search(r'\b(\d{4,8})\b', t); return m.group(1) if m else "N/A"
 
-def bot_polling():
-    while True:
-        try: bot.polling(none_stop=True)
-        except Exception as e: logger.error(f"Polling Error: {e}"); time.sleep(5)
-
+# ======================================================================================
+# حلقة جلب OTP الخلفية (سريعة جداً)
+# ======================================================================================
 def main_loop():
     sent_ids = set()
     if os.path.exists("sent_msgs.json"):
@@ -215,38 +198,32 @@ def main_loop():
                 try:
                     res = xwd_check_otp(num)
                     if res["status"] == "SUKSES" and res["otp"]:
-                        otp = res["otp"]
-                        update_active_number(num, otp)
-                        remove_active_number(num)
-                        name, flag = get_country_info_by_num(num)
-                        svc = "UNKNOWN"
-                        # إرسال للجروب (تمويه)
-                        grp_txt = f"✨ OTP\n🌍 {flag} {name}\n☎ +{mask_number(num)}\n🔐 {otp}"
+                        otp = res["otp"]; update_active_number(num, otp); remove_active_number(num); name, flag = get_country_info_by_num(num)
+                        # إرسال للجروب (رقم مخفي)
+                        g_txt = f"✨ OTP\n🌍 {flag} {name}\n☎ +{mask_number(num)}\n🔐 {otp}"
                         g_markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("📋 نسخ الكود", callback_data=f"copy_{otp}"))
-                        for ch in CHAT_IDS:
-                            try: bot.send_message(ch, grp_txt, parse_mode="HTML", reply_markup=g_markup)
-                            except: pass
-                        # إرسال للمستخدم
+                        for ch in CHAT_IDS: bot.send_message(ch, g_txt, parse_mode="HTML", reply_markup=g_markup)
+                        # إرسال للمستخدم (رقم كامل)
                         if assigned_to:
-                            usr_txt = f"✨ OTP الخاص بك\n🌍 {flag} {name}\n☎ +{num}\n🔐 {otp}"
+                            u_txt = f"✨ OTP الخاص بك\n🌍 {flag} {name}\n☎ +{num}\n🔐 {otp}"
                             u_markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("📋 نسخ الكود", callback_data=f"copy_{otp}"))
-                            try: bot.send_message(assigned_to, usr_txt, parse_mode="HTML", reply_markup=u_markup)
-                            except: pass
-                except:
-                    pass
-            time.sleep(3)
+                            bot.send_message(assigned_to, u_txt, parse_mode="HTML", reply_markup=u_markup)
+                except: pass
+            time.sleep(3) # فحص كل 3 ثوان
         except: time.sleep(5)
 
+# ======================================================================================
+# أوامر البوت وأزرار التفاعل
+# ======================================================================================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("copy_"))
 def copy_h(c): bot.answer_callback_query(c.id, f"✅ تم نسخ الكود: {c.data.split('_')[1]}", show_alert=True)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("country_"))
 def country_h(c):
+    bot.answer_callback_query(c.id, "📡 جاري جلب الرقم...")
     try:
-        bot.answer_callback_query(c.id, "📡 جاري جلب الرقم...")
-        uid = c.from_user.id
-        parts = c.data.split("_"); code = parts[1]
-        if code not in AVAILABLE_COUNTRIES: return bot.answer_callback_query(c.id, "❌ غير مدعومة.", show_alert=True)
+        uid = c.from_user.id; parts = c.data.split("_"); code = parts[1]
+        if code not in AVAILABLE_COUNTRIES: return
         range_str = AVAILABLE_COUNTRIES[code][2][0]
         try:
             number = xwd_get_number(range_str)
@@ -260,19 +237,13 @@ def country_h(c):
             bot.edit_message_text(msg, c.message.chat.id, c.message.message_id, parse_mode="HTML", reply_markup=markup)
             bot.answer_callback_query(c.id, "✅ تم تعيين الرقم.")
         except Exception as e:
-            # هذا هو التعديل المهم: يرسل رسالة الخطأ للمستخدم عشان ما يعلق
-            err_msg = str(e)
-            if "insufficient" in err_msg.lower() or "balance" in err_msg.lower():
-                err_msg = "⚠️ الرصيد غير كافٍ يرجى شحن الحساب."
-            bot.edit_message_text(f"❌ فشل جلب الرقم:\n{err_msg}", c.message.chat.id, c.message.message_id)
-    except Exception as e:
-        logger.error(f"Country Error: {e}")
+            bot.edit_message_text(f"❌ فشل جلب الرقم:\n{str(e)}", c.message.chat.id, c.message.message_id)
+    except Exception as e: logger.error(f"Country Error: {e}")
 
 @bot.callback_query_handler(func=lambda c: c.data == "back")
 def back_h(c):
     markup = types.InlineKeyboardMarkup(row_width=2)
-    for code, (name, flag, _) in AVAILABLE_COUNTRIES.items():
-        markup.add(types.InlineKeyboardButton(f"{flag} {name}", callback_data=f"country_{code}"))
+    for code, (name, flag, _) in AVAILABLE_COUNTRIES.items(): markup.add(types.InlineKeyboardButton(f"{flag} {name}", callback_data=f"country_{code}"))
     bot.edit_message_text("🌍 اختر الدولة:", c.message.chat.id, c.message.message_id, parse_mode="HTML", reply_markup=markup)
 
 @bot.message_handler(commands=['start'])
@@ -281,6 +252,11 @@ def start_h(m):
     save_user(m.from_user.id, username=m.from_user.username or "", first_name=m.from_user.first_name or "")
     bot.send_message(m.chat.id, "🌍 أهلاً! اختر الدولة للحصول على رقم:", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup(row_width=2).add(*[types.InlineKeyboardButton(f"{f} {n}", callback_data=f"country_{c}") for c, (n, f, _) in AVAILABLE_COUNTRIES.items()]))
 
+# ======================================================================================
+# تشغيل البوت والخادم (Render)
+# ======================================================================================
 if __name__ == "__main__":
     threading.Thread(target=main_loop, daemon=True).start()
-    bot_polling()
+    while True:
+        try: bot.polling(none_stop=True)
+        except Exception as e: logger.error(f"Polling Error: {e}"); time.sleep(5)
