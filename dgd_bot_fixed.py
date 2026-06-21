@@ -1,5 +1,5 @@
 # ======================================================================================
-# 𝙓𝙒𝘿 𝙎𝙈𝙎 - النسخة النهائية الشاملة (جميع الأزرار شغالة 100%)
+# 𝙓𝙒𝘿 𝙎𝙈𝙎 - النسخة النهائية (حل مشكلة 403 بإشعار واضح)
 # المطور: hacker Taker
 # ======================================================================================
 
@@ -33,7 +33,7 @@ DB_PATH = os.environ.get("DB_PATH", "xwd_bot.db")
 # ======================================================================================
 # إعدادات الموقع XWD
 # ======================================================================================
-XWD_API_KEY = "986fcbfb7fe29c125d9381f325d9497a"
+XWD_API_KEY = "9861618abcb119e317c6051000a5997c"
 XWD_BASE_URL = "http://xwdsms.org"
 
 # ======================================================================================
@@ -124,7 +124,7 @@ def update_active_number(number, otp_code):
     except: pass
 
 # ======================================================================================
-# دوال الاتصال بـ XWD API
+# دوال الاتصال بـ XWD API (تم علاج خطأ 403)
 # ======================================================================================
 def xwd_get_number(range_str):
     url = f"{XWD_BASE_URL}/api/v1/get-number"
@@ -134,6 +134,11 @@ def xwd_get_number(range_str):
         resp = requests.post(url, json=payload, headers=headers, timeout=20, allow_redirects=False)
         if resp.status_code in [301, 302, 307, 308]:
             raise Exception("الموقع يقوم بإعادة التوجيه إلى HTTPS ولا يقبل الاتصال.")
+        
+        # 🟢 الحل الجديد: التعامل مع خطأ 403 (الرصيد صفر أو المفتاح محظور)
+        if resp.status_code == 403:
+            raise Exception("⚠️ فشل الجلب: الرصيد غير كافٍ أو أن المفتاح محظور (403).")
+            
         if resp.status_code != 200:
             raise Exception(f"خطأ في الخادم (الكود: {resp.status_code})")
         data = resp.json()
@@ -163,6 +168,9 @@ def xwd_check_otp(phone):
         resp = requests.get(url, headers=headers, params=params, timeout=20, allow_redirects=False)
         if resp.status_code in [301, 302, 307, 308]:
             raise Exception("الموقع يقوم بإعادة التوجيه ولا يقبل الاتصال.")
+        # 🟢 التعامل مع 403 هنا أيضاً
+        if resp.status_code == 403:
+            raise Exception("⚠️ فشل الفحص: الصلاحيات غير كافية.")
         if resp.status_code != 200:
             raise Exception(f"خطأ في الخادم (الكود: {resp.status_code})")
         data = resp.json()
@@ -271,7 +279,7 @@ def country_h(c):
             name, flag = get_country_info_by_num(clean)
             msg = f"◈ الرقم: <code>+{clean}</code>\n◈ الدولة: {flag} {name}\n◈ الحالة: ⏳ انتظر OTP..."
             
-            # الأزرار المضمنة (كما في الصورة)
+            # الأزرار المضمنة
             markup = types.InlineKeyboardMarkup(row_width=1)
             markup.row(
                 types.InlineKeyboardButton("🔄 تغيير الرقم", callback_data=f"country_{code}"),
@@ -315,7 +323,6 @@ def get_num_handler(m):
 def balance_handler(m):
     try:
         balance = xwd_get_balance()
-        # معالجة الرصيد إذا كان رقمًا عشريًا
         bal_str = f"{balance:.4f}" if isinstance(balance, float) else str(balance)
         msg = f"💰 <b>الرصيد الحالي في الموقع:</b>\n<code>{bal_str} دولار</code>"
         bot.reply_to(m, msg, parse_mode="HTML")
@@ -327,10 +334,8 @@ def balance_handler(m):
 def change_num_handler(m):
     user = get_user(m.from_user.id)
     if user and user[5]:
-        # يحاول سحب رقم جديد للدولة الحالية
         code = user[4]
         if code in AVAILABLE_COUNTRIES:
-            # نقوم بمحاكاة ضغطة زر الدولة
             c = types.CallbackQuery(id="0", from_user=m.from_user, message=m, data=f"country_{code}")
             country_h(c)
         else:
@@ -349,8 +354,7 @@ def stats_handler(m):
 # 5. زر "🤝 شارك واربح"
 @bot.message_handler(func=lambda m: m.text == "🤝 شارك واربح")
 def refer_handler(m):
-    # رابط دعوة للبوت
-    bot_username = "Taker_OTP_BOT"  # يوزر البوت الخاص بك
+    bot_username = "Taker_OTP_BOT"
     msg = f"🤝 <b>شارك واربح!</b>\n\nادع أصدقائك لاستخدام البوت واربح المكافآت!\n\nرابط الدعوة الخاص بك:\n<code>https://t.me/{bot_username}?start={m.from_user.id}</code>\n\nانسخ الرابط وشاركه في الجروبات."
     bot.reply_to(m, msg, parse_mode="HTML")
 
