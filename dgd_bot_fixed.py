@@ -1,6 +1,7 @@
 # ======================================================================================
-# بوت DGDNetwork - النسخة النهائية الخارقة (حل مشكلة 403 بشكل جذري)
+# 𝘿𝙀𝙑𝙄𝙇 𝙉𝙐𝙈𝘽𝙀𝙍 - XWD SMS (النسخة النهائية العملاقة المتكاملة)
 # المطور: hacker Taker
+# الربط الكامل مع xwdsms.org
 # ======================================================================================
 
 import time
@@ -12,12 +13,11 @@ import sqlite3
 import threading
 import traceback
 import random
-import sys
 import logging
-from datetime import datetime, timedelta
-from telebot import types
-import telebot
+from datetime import datetime
 from flask import Flask, jsonify
+import telebot
+from telebot import types
 
 # ======================================================================================
 # إعدادات التسجيل
@@ -25,7 +25,7 @@ from flask import Flask, jsonify
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
-    handlers=[logging.FileHandler("bot.log"), logging.StreamHandler()]
+    handlers=[logging.FileHandler("xwd_bot.log"), logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
@@ -35,36 +35,45 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = "8686995713:AAFTesnEDbFJcSgtM3IrURU0WtPdNkJtO4c"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
-DB_PATH = os.environ.get("DB_PATH", "dgd_bot.db")
+DB_PATH = os.environ.get("DB_PATH", "xwd_bot.db")
 
 # ======================================================================================
-# مفتاح API والروابط (الرابط النهائي الصحيح)
+# مفاتيح وروابط الموقع الجديد XWD
 # ======================================================================================
-DGD_API_KEY = "dgd_e2a755bfa8b37b06728b01c6178d4799780e7d62b6696c8e"
-DGD_BASE_URL = "https://dgd.dgddigital.com"
+XWD_API_KEY = "ef203b6b48dc1973cff94c8dfd660b57"
+XWD_BASE_URL = "https://xwdsms.org/api/v1"
 
 # ======================================================================================
-# تعريف البوت
+# تعريف البوت والمتغيرات العامة
 # ======================================================================================
 bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
+BOT_ACTIVE = True
 
 # ======================================================================================
-# قائمة الدول المتاحة
+# قائمة الدول المتاحة (الرينجات التي زودتني بها)
 # ======================================================================================
 AVAILABLE_COUNTRIES = {
-    "223": ("مالي", "🇲🇱", ["223655XXX"]),
-    "225": ("ساحل العاج", "🇨🇮", ["2250787XXX", "2250709XXX", "225071XXX", "225078XXX", "225075XXX", "22507795XXX", "22507898XXX", "2250789XXX"]),
-    "224": ("غينيا", "🇬🇳", ["224655XXX", "224655311XXX", "22465520XXX"]),
-    "232": ("سيراليون", "🇸🇱", ["23276XXX", "2327651XXX", "2327653XXX"]),
-    "229": ("بنين", "🇧🇯", ["2290194323XXX"]),
-    "236": ("جمهورية أفريقيا الوسطى", "🇨🇫", ["23672XXX", "2367234XXX", "2367210XXX", "2367293XXX", "2367277XXX"]),
-    "44": ("المملكة المتحدة", "🇬🇧", ["4473845XXX"]),
+    "22501": ("ساحل العاج", "🇨🇮", ["2250765XXXXX"]),
+    "49155": ("ألمانيا", "🇩🇪", ["4915511382XXXX"]),
+    "26134": ("مدغشقر", "🇲🇬", ["26134143XXXX"]),
+    "23762": ("الكاميرون", "🇨🇲", ["237621XXXXXX"]),
+    "22178": ("السنغал", "🇸🇳", ["221785XXXXXX"]),
+    "22901": ("بنين", "🇧🇯", ["2290192273XXXX"]),
+    "23276": ("سيراليون", "🇸🇱", ["23276XXXXXX"]),
+    "22898": ("توغو", "🇹🇬", ["2289871XXXXXX"]),
+    "44740": ("المملكة المتحدة", "🇬🇧", ["44740XXXXXX"]),
+    "23490": ("نيجيريا", "🇳🇬", ["23490XXXXXX"]),
+    "25471": ("كينيا", "🇰🇪", ["25471XXXXXX"]),
 }
-DEFAULT_RANGES = {code: ranges for code, (_, _, ranges) in AVAILABLE_COUNTRIES.items()}
+
+# تحويل القاموس ليتوافق مع نظام الرينجات
+DEFAULT_RANGES = {}
+for code, (_, _, ranges) in AVAILABLE_COUNTRIES.items():
+    DEFAULT_RANGES[code] = ranges
 
 # ======================================================================================
-# قاعدة البيانات
+# قاعدة البيانات (SQLite)
 # ======================================================================================
 def init_db():
     try:
@@ -122,6 +131,7 @@ def init_db():
             last_check TEXT
         )''')
         c.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('bot_active', '1')")
+        c.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('welcome_photo', '')")
         conn.commit()
         conn.close()
         logger.info("✅ قاعدة البيانات جاهزة")
@@ -150,12 +160,9 @@ def save_user(user_id, username="", first_name="", last_name="", country_code=No
         c = conn.cursor()
         existing = get_user(user_id)
         if existing:
-            if country_code is None:
-                country_code = existing[4]
-            if assigned_number is None:
-                assigned_number = existing[5]
-            if private_combo_country is None:
-                private_combo_country = existing[7]
+            if country_code is None: country_code = existing[4]
+            if assigned_number is None: assigned_number = existing[5]
+            if private_combo_country is None: private_combo_country = existing[7]
         c.execute("""REPLACE INTO users (user_id, username, first_name, last_name, country_code, assigned_number, is_banned, private_combo_country)
                      VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT is_banned FROM users WHERE user_id=?), 0), ?)""",
                   (user_id, username, first_name, last_name, country_code, assigned_number, user_id, private_combo_country))
@@ -315,17 +322,32 @@ def is_maintenance_mode():
         return False
 
 def set_maintenance_mode(status):
+    global BOT_ACTIVE
+    BOT_ACTIVE = status
+
+def get_setting(key):
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("REPLACE INTO bot_settings (key, value) VALUES ('bot_active', ?)", ("1" if status else "0",))
+        c.execute("SELECT value FROM bot_settings WHERE key=?", (key,))
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row else None
+    except:
+        return None
+
+def set_setting(key, value):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("REPLACE INTO bot_settings (key, value) VALUES (?, ?)", (key, value))
         conn.commit()
         conn.close()
     except:
         pass
 
 # ======================================================================================
-# الاشتراك الإجباري
+# دوال الاشتراك الإجباري
 # ======================================================================================
 def get_all_force_sub_channels(enabled_only=True):
     try:
@@ -406,54 +428,48 @@ def force_sub_markup():
     return markup
 
 # ======================================================================================
-# دوال DGD API (نسخة الهروب من 403 بإضافة User-Agent)
+# دوال API للموقع الجديد (XWD SMS)
 # ======================================================================================
-def dgd_get_number(range_str):
-    url = f"{DGD_BASE_URL}/api/v1/user/getnum"
-    # إضافة User-Agent لخداع الخادم وتجنب الحظر 403
+def xwd_get_number(range_str):
+    """جلب رقم جديد من XWD"""
+    url = f"{XWD_BASE_URL}/get-number"
     headers = {
-        "X-API-KEY": DGD_API_KEY, 
-        "Content-Type": "application/json", 
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "x-api-key": XWD_API_KEY,
+        "Content-Type": "application/json"
     }
-    payload = {"range": range_str, "is_national": False, "remove_plus": False}
+    payload = {"range": range_str}
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=30)
-        if resp.status_code == 403:
-            raise Exception("الخادم رفض الطلب (403). تأكد من صحة الـ API Key أو انتظر قليلاً.")
         resp.raise_for_status()
         data = resp.json()
-        if not data.get("ok"):
-            raise Exception(data.get("message", "DGD API error"))
-        number = data.get("data", {}).get("number") or data.get("number")
+        if not data.get("success"):
+            raise Exception(data.get("message", "XWD API Error"))
+        number = data.get("number")
         if not number:
-            raise Exception("لم يتم العثور على رقم في الرد")
+            raise Exception("لم يتم استلام رقم")
         return str(number).strip()
     except Exception as e:
-        logger.error(f"dgd_get_number failed: {e}")
+        logger.error(f"XWD get_number failed: {e}")
         raise
 
-def dgd_check_number(phone):
-    url = f"{DGD_BASE_URL}/api/v1/user/checknum"
+def xwd_check_otp(phone):
+    """فحص رقم للتحقق من وصول OTP"""
+    url = f"{XWD_BASE_URL}/check-otp"
     headers = {
-        "X-API-KEY": DGD_API_KEY, 
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "x-api-key": XWD_API_KEY,
+        "Accept": "application/json"
     }
-    params = {"nomor": phone}
+    params = {"number": phone}
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=30)
-        if resp.status_code == 403:
-            raise Exception("الخادم رفض الطلب (403). تحقق من الـ API Key.")
         resp.raise_for_status()
         data = resp.json()
-        if not data.get("ok"):
-            raise Exception(data.get("message", "DGD API error"))
-        info = data.get("data", {})
-        return {"status": info.get("status"), "otp": info.get("kode_otp")}
+        if not data.get("success"):
+            raise Exception(data.get("message", "XWD API Error"))
+        otp = data.get("otp")
+        return {"status": "SUKSES", "otp": otp} if otp else {"status": "WAIT", "otp": None}
     except Exception as e:
-        logger.error(f"dgd_check_number failed: {e}")
+        logger.error(f"XWD check_otp failed: {e}")
         raise
 
 # ======================================================================================
@@ -507,10 +523,16 @@ def remove_active_number(number):
         pass
 
 # ======================================================================================
-# دوال معالجة النصوص
+# دوال تنسيق الرسائل والأمان
 # ======================================================================================
 def clean_number(number):
     return re.sub(r'\D', '', str(number))
+
+def mask_number(number):
+    num = str(number)
+    if len(num) <= 8:
+        return num
+    return num[:4] + "••••" + num[-4:]
 
 def extract_otp(text):
     patterns = [r'(?:code|رمز|كود|verification|تحقق|otp|pin)[:\s]+[‎]?(\d{4,8})', r'\b(\d{4,8})\b']
@@ -566,17 +588,6 @@ def get_country_info_by_number(number):
             return get_country_info(code)
     return "غير معروف", "🌍"
 
-def mask_number(number):
-    num = str(number)
-    if len(num) <= 8:
-        return num
-    return num[:4] + "••••" + num[-4:]
-
-def safe_html(text):
-    if not text:
-        return ""
-    return str(text).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
-
 def format_message_group(number, sms):
     name_ar, flag = get_country_info_by_number(number)
     otp = extract_otp(sms)
@@ -607,7 +618,7 @@ def format_message_user(number, sms):
 # ======================================================================================
 # إرسال OTP
 # ======================================================================================
-def send_otp_to_user_and_group(date_str, number, sms):
+def send_otp_to_user_and_group(number, sms):
     otp = extract_otp(sms)
     clean_num = re.sub(r'\D', '', str(number))
     user_id = get_user_by_number(clean_num)
@@ -647,71 +658,37 @@ def handle_copy_button(call):
     bot.answer_callback_query(call.id, f"✅ تم نسخ الكود: {otp_code}", show_alert=True)
 
 # ======================================================================================
-# التشغيل التلقائي
+# التشغيل التلقائي الخلفي (سريع جداً)
 # ======================================================================================
-def request_new_numbers():
-    try:
-        combos = get_all_combos()
-        if not combos:
-            for code, ranges in DEFAULT_RANGES.items():
-                for rng in ranges:
-                    save_combo(code, rng)
-            combos = get_all_combos()
-        for country_code, combo_index in combos:
-            range_str = get_combo_range(country_code, combo_index)
-            if not range_str:
-                continue
-            try:
-                new_number = dgd_get_number(range_str)
-                clean_num = re.sub(r'\D', '', new_number)
-                add_active_number(clean_num, country_code, combo_index, assigned_to=0)
-                logger.info(f"✅ طلب رقم جديد: {clean_num} من {country_code}")
-                time.sleep(1)
-            except Exception as e:
-                logger.error(f"❌ فشل طلب رقم من {country_code}: {e}")
-    except Exception as e:
-        logger.error(f"request_new_numbers error: {e}")
-
-def check_active_numbers():
-    try:
-        active = get_active_numbers()
-        for number, country_code, combo_index, assigned_to, status, otp_code in active:
-            if status in ("SUCCESS", "EXPIRED"):
-                remove_active_number(number)
-                continue
-            try:
-                result = dgd_check_number(number)
-                if result["status"] == "SUKSES":
-                    otp = result.get("otp", "N/A")
-                    update_active_number(number, otp_code=otp)
-                    send_otp_to_user_and_group(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), number, f"OTP: {otp}")
-                    remove_active_number(number)
-                elif result["status"] == "EXPIRED":
-                    update_active_number(number, status="EXPIRED")
-                    remove_active_number(number)
-                else:
-                    update_active_number(number, status=result["status"])
-            except Exception as e:
-                if "EXPIRED" in str(e):
-                    remove_active_number(number)
-                else:
-                    logger.error(f"⚠️ فحص {number} فشل: {e}")
-    except Exception as e:
-        logger.error(f"check_active_numbers error: {e}")
-
-def main_loop():
-    logger.info("🚀 DGDNetwork Bot يعمل")
-    last_request = 0
+def check_active_numbers_loop():
+    logger.info("🚀 بدء حلقة جلب OTP (تفحص كل 3 ثوانٍ)")
     while True:
         try:
-            now = time.time()
-            if now - last_request >= 30:
-                request_new_numbers()
-                last_request = now
-            check_active_numbers()
-            time.sleep(2)
+            active = get_active_numbers()
+            for number, country_code, combo_index, assigned_to, status, otp_code in active:
+                if status in ("SUCCESS", "EXPIRED"):
+                    remove_active_number(number)
+                    continue
+                try:
+                    result = xwd_check_otp(number)
+                    if result["status"] == "SUKSES" and result.get("otp"):
+                        otp = result["otp"]
+                        update_active_number(number, otp_code=otp)
+                        send_otp_to_user_and_group(number, f"OTP: {otp}")
+                        remove_active_number(number)
+                    elif result["status"] == "EXPIRED":
+                        update_active_number(number, status="EXPIRED")
+                        remove_active_number(number)
+                    else:
+                        update_active_number(number, status=result["status"])
+                except Exception as e:
+                    if "EXPIRED" in str(e):
+                        remove_active_number(number)
+                    else:
+                        logger.error(f"⚠️ فحص {number} فشل: {e}")
+            time.sleep(3) # سرعة فائقة (فحص كل 3 ثوان)
         except Exception as e:
-            logger.error(f"❌ خطأ رئيسي: {e}")
+            logger.error(f"❌ خطأ في حلقة الفحص: {e}")
             traceback.print_exc()
             time.sleep(10)
 
@@ -739,8 +716,7 @@ def main_keyboard(user_id):
 
 def show_country_menu_get_markup(user_id):
     markup = types.InlineKeyboardMarkup(row_width=2)
-    for code, (name_ar, flag, _) in AVAILABLE_COUNTRIES.items():
-        ranges = AVAILABLE_COUNTRIES[code][2]
+    for code, (name_ar, flag, ranges) in AVAILABLE_COUNTRIES.items():
         if len(ranges) == 1:
             btn_text = f"{flag} {name_ar}"
         else:
@@ -826,7 +802,7 @@ def handle_country(call):
             return
         range_str = ranges[0]
         try:
-            number = dgd_get_number(range_str)
+            number = xwd_get_number(range_str)
         except Exception as e:
             bot.answer_callback_query(call.id, f"❌ فشل جلب الرقم: {str(e)}", show_alert=True)
             return
@@ -862,7 +838,7 @@ def change_number(call):
             return
         range_str = ranges[0]
         try:
-            number = dgd_get_number(range_str)
+            number = xwd_get_number(range_str)
         except Exception as e:
             bot.answer_callback_query(call.id, f"❌ فشل: {str(e)}", show_alert=True)
             return
@@ -910,7 +886,7 @@ def get_otp_menu(msg):
     if user and user[5]:
         number = user[5]
         try:
-            result = dgd_check_number(number)
+            result = xwd_check_otp(number)
             if result["status"] == "SUKSES" and result["otp"]:
                 bot.reply_to(msg, f"✅ الكود: {result['otp']}")
             elif result["status"] == "WAIT":
@@ -1004,7 +980,7 @@ def admin_panel(call):
         logger.error(f"Admin Panel Error: {e}")
 
 # ======================================================================================
-# باقي دوال الأدمن
+# دوال الأدمن
 # ======================================================================================
 @bot.callback_query_handler(func=lambda call: call.data == "toggle_maintenance")
 def handle_maintenance_toggle(call):
@@ -1018,7 +994,7 @@ def handle_maintenance_toggle(call):
 def admin_add_combo(call):
     if not is_admin(call.from_user.id): return
     user_states[call.from_user.id] = "add_combo_country"
-    bot.send_message(call.message.chat.id, "أرسل كود الدولة (مثل 44):")
+    bot.send_message(call.message.chat.id, "أرسل كود الدولة (مثل 22501):")
 
 @bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == "add_combo_country")
 def add_combo_country(msg):
@@ -1027,15 +1003,15 @@ def add_combo_country(msg):
         bot.reply_to(msg, "❌ كود غير مدعوم!")
         return
     user_states[msg.from_user.id] = {"step": "add_combo_range", "code": code}
-    bot.reply_to(msg, "أرسل الرينج (مثل 4473845XXX):")
+    bot.reply_to(msg, "أرسل الرينج (مثل 2250765XXXXX):")
 
 @bot.message_handler(func=lambda msg: isinstance(user_states.get(msg.from_user.id), dict) and user_states[msg.from_user.id].get("step") == "add_combo_range")
 def add_combo_range(msg):
     data = user_states[msg.from_user.id]
     code = data["code"]
     range_str = msg.text.strip()
-    if not range_str.endswith("XXX"):
-        bot.reply_to(msg, "❌ الرينج يجب أن ينتهي بـ XXX")
+    if not range_str.endswith("XXXXX"):
+        bot.reply_to(msg, "❌ الرينج يجب أن ينتهي بـ XXXXX")
         return
     save_combo(code, range_str)
     bot.reply_to(msg, f"✅ تم إضافة الرينج {range_str}")
@@ -1054,7 +1030,7 @@ def admin_del_combo(call):
         rng = get_combo_range(code, idx)
         markup.add(types.InlineKeyboardButton(f"{flag} {name_ar} ({rng})", callback_data=f"del_combo_{code}_{idx}"))
     markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel"))
-    bot.edit_message_text("اختر الرينج للحذف:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text("🗑️ اختر الرينج للحذف:", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("del_combo_"))
 def del_combo_confirm(call):
@@ -1376,13 +1352,13 @@ def confirm_clear_db(call):
     admin_panel(call)
 
 # ======================================================================================
-# خادم ويب Flask
+# خادم ويب Flask (لضمان عدم توقف البوت على Render)
 # ======================================================================================
 app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return jsonify({"status": "running", "bot": "DGDNetwork OTP Bot"})
+    return jsonify({"status": "running", "bot": "XWD SMS OTP Bot"})
 
 @app.route('/health')
 def health():
@@ -1405,14 +1381,15 @@ def run_bot():
             time.sleep(5)
 
 if __name__ == "__main__":
-    # تشغيل خادم الويب
+    # تشغيل خادم الويب (مطلوب من Render)
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
     logger.info("✅ خادم الويب يعمل على المنفذ 8080")
     
-    # تشغيل الحلقة الرئيسية
-    main_thread = threading.Thread(target=main_loop, daemon=True)
-    main_thread.start()
+    # تشغيل الحلقة الخلفية لجلب الـ OTP
+    check_thread = threading.Thread(target=check_active_numbers_loop, daemon=True)
+    check_thread.start()
+    logger.info("⚡ حلقة جلب OTP تعمل بسرعة فائقة (فحص كل 3 ثوانٍ)")
     
     # تشغيل البوت
     run_bot()
