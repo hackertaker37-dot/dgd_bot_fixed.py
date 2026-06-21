@@ -404,7 +404,7 @@ def force_sub_markup():
     for _, url, desc in channels:
         text = f"📢 {desc}" if desc else "📢 اشترك في القناة"
         markup.add(types.InlineKeyboardButton(text, url=url))
-    markup.add(types.InlineKeyboardButton("✅ تحقق من الاشتراك", callback_data="check_sub", style='primary'))
+    markup.add(types.InlineKeyboardButton("✅ تحقق من الاشتراك", callback_data="check_sub"))
     return markup
 
 # ======================================================================================
@@ -605,8 +605,8 @@ def send_otp_to_user_and_group(date_str, number, sms):
         try:
             user_markup = types.InlineKeyboardMarkup()
             user_markup.row(
-                types.InlineKeyboardButton("𝑂𝑊𝑁𝐸𝑅⚙️", url="https://t.me/hackerTaker", style='primary'),
-                types.InlineKeyboardButton("𓆩𝘽𝙤𝙩 𝘾𝙝𝙖𝙣𝙣𝙚𝙡𓆪", url="https://t.me/numhj", style='danger')
+                types.InlineKeyboardButton("𝑂𝑊𝑁𝐸𝑅⚙️", url="https://t.me/hackerTaker"),
+                types.InlineKeyboardButton("𓆩𝘽𝙤𝙩 𝘾𝙝𝙖𝙣𝙣𝙚𝙡𓆪", url="https://t.me/numhj")
             )
             bot.send_message(user_id, format_message_user(clean_num, sms), parse_mode="HTML", reply_markup=user_markup)
             logger.info(f"✅ تم إرسال OTP للمستخدم {user_id}")
@@ -617,10 +617,10 @@ def send_otp_to_user_and_group(date_str, number, sms):
     
     group_markup = types.InlineKeyboardMarkup()
     group_markup.row(
-        types.InlineKeyboardButton("💬 𝕆𝕋ℙ 𝔾ℝ𝕆𝕌ℙ", url="https://t.me/numhj", style='primary'),
-        types.InlineKeyboardButton("🤖 𝔻𝔼𝕍𝕀𝕃 𝔹𝕆𝕋", url="https://t.me/Taker_OTP_BOT", style='danger')
+        types.InlineKeyboardButton("💬 𝕆𝕋ℙ 𝔾ℝ𝕆𝕌ℙ", url="https://t.me/numhj"),
+        types.InlineKeyboardButton("🤖 𝔻𝔼𝕍𝕀𝕃 𝔹𝕆𝕋", url="https://t.me/Taker_OTP_BOT")
     )
-    group_markup.row(types.InlineKeyboardButton("👑 𝕆𝕎ℕ𝔼ℝ", url="https://t.me/hackerTaker", style='primary'))
+    group_markup.row(types.InlineKeyboardButton("👑 𝕆𝕎ℕ𝔼ℝ", url="https://t.me/hackerTaker"))
     
     for chat_id in CHAT_IDS:
         try:
@@ -711,12 +711,12 @@ def is_admin(user_id):
 
 def main_keyboard(user_id):
     keyboard = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    btn1 = types.KeyboardButton("📱 الحصول على رقم", style='danger')
-    btn2 = types.KeyboardButton("📩 الحصول على OTP", style='danger')
-    btn3 = types.KeyboardButton("📢 الانضمام للقناة", style='danger')
-    btn4 = types.KeyboardButton("❓ المساعدة", style='primary')
+    btn1 = types.KeyboardButton("📱 الحصول على رقم")
+    btn2 = types.KeyboardButton("📩 الحصول على OTP")
+    btn3 = types.KeyboardButton("📢 الانضمام للقناة")
+    btn4 = types.KeyboardButton("❓ المساعدة")
     if is_admin(user_id):
-        btn5 = types.KeyboardButton("🔐 Admin Panel", style='success')
+        btn5 = types.KeyboardButton("🔐 Admin Panel")
         keyboard.row(btn1, btn2)
         keyboard.row(btn3, btn4)
         keyboard.row(btn5)
@@ -735,7 +735,7 @@ def show_country_menu_get_markup(user_id):
             btn_text = f"{flag} {name_ar} ({len(ranges)} رينج)"
         markup.add(types.InlineKeyboardButton(btn_text, callback_data=f"country_{code}"))
     if is_admin(user_id):
-        markup.add(types.InlineKeyboardButton("🔐 Admin Panel", callback_data="admin_panel", style='success'))
+        markup.add(types.InlineKeyboardButton("🔐 Admin Panel", callback_data="admin_panel"))
     return markup
 
 def show_country_menu(message):
@@ -755,14 +755,14 @@ def show_country_menu(message):
 def show_number_actions(call, number, cc):
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
-        types.InlineKeyboardButton("🔄 تغيير الرقم", callback_data=f"change_{cc}", style='danger'),
-        types.InlineKeyboardButton("🌍 تغيير الدولة", callback_data="back_to_countries", style='primary')
+        types.InlineKeyboardButton("🔄 تغيير الرقم", callback_data=f"change_{cc}"),
+        types.InlineKeyboardButton("🌍 تغيير الدولة", callback_data="back_to_countries")
     )
     markup.add(
-        types.InlineKeyboardButton("👥 جروب البوت", url="https://t.me/numhj", style='danger'),
-        types.InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="back_to_start", style='danger')
+        types.InlineKeyboardButton("👥 جروب البوت", url="https://t.me/numhj"),
+        types.InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="back_to_start")
     )
-    markup.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_to_countries", style='danger'))
+    markup.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_to_countries"))
     return markup
 
 @bot.message_handler(commands=['start'])
@@ -932,33 +932,33 @@ def admin_main_menu():
     status_text = "الآن: يعمل بنجاح" if not is_maintenance_mode() else "الآن: قيد الصيانة"
     markup.add(types.InlineKeyboardButton(f"{status_icon} {status_text} {status_icon}", callback_data="toggle_maintenance"))
     markup.row(
-        types.InlineKeyboardButton("📥 إضافة رينج", callback_data="admin_add_combo", style='primary'),
-        types.InlineKeyboardButton("🗑️ حذف رينج", callback_data="admin_del_combo", style='primary')
+        types.InlineKeyboardButton("📥 إضافة رينج", callback_data="admin_add_combo"),
+        types.InlineKeyboardButton("🗑️ حذف رينج", callback_data="admin_del_combo")
     )
     markup.row(
-        types.InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats", style='primary'),
-        types.InlineKeyboardButton("📄 تقرير شامل", callback_data="admin_full_report", style='primary')
+        types.InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats"),
+        types.InlineKeyboardButton("📄 تقرير شامل", callback_data="admin_full_report")
     )
     markup.row(
-        types.InlineKeyboardButton("📢 إذاعة عامة", callback_data="admin_broadcast_all", style='primary'),
-        types.InlineKeyboardButton("📨 إذاعة مخصصة", callback_data="admin_broadcast_user", style='success')
+        types.InlineKeyboardButton("📢 إذاعة عامة", callback_data="admin_broadcast_all"),
+        types.InlineKeyboardButton("📨 إذاعة مخصصة", callback_data="admin_broadcast_user")
     )
     markup.row(
-        types.InlineKeyboardButton("🚫 حظر", callback_data="admin_ban", style='success'),
-        types.InlineKeyboardButton("✅ إلغاء حظر", callback_data="admin_unban", style='success'),
-        types.InlineKeyboardButton("👤 معلومات", callback_data="admin_user_info", style='success')
+        types.InlineKeyboardButton("🚫 حظر", callback_data="admin_ban"),
+        types.InlineKeyboardButton("✅ إلغاء حظر", callback_data="admin_unban"),
+        types.InlineKeyboardButton("👤 معلومات", callback_data="admin_user_info")
     )
     markup.row(
-        types.InlineKeyboardButton("🔗 إشتراك", callback_data="admin_force_sub", style='danger'),
-        types.InlineKeyboardButton("🔑 برايفت", callback_data="admin_private_combo", style='primary')
+        types.InlineKeyboardButton("🔗 إشتراك", callback_data="admin_force_sub"),
+        types.InlineKeyboardButton("🔑 برايفت", callback_data="admin_private_combo")
     )
     markup.row(
-        types.InlineKeyboardButton("🖼️ تغيير صورة الترحيب", callback_data="admin_set_welcome_photo", style='success'),
-        types.InlineKeyboardButton("🗑️ حذف الصورة", callback_data="admin_del_welcome_photo", style='primary')
+        types.InlineKeyboardButton("🖼️ تغيير صورة الترحيب", callback_data="admin_set_welcome_photo"),
+        types.InlineKeyboardButton("🗑️ حذف الصورة", callback_data="admin_del_welcome_photo")
     )
     markup.row(
-        types.InlineKeyboardButton("🗑️ مسح قاعدة البيانات", callback_data="clear_db", style='success'),
-        types.InlineKeyboardButton("🔙 مغادرة لوحة التحكم", callback_data="back_to_countries", style='success')
+        types.InlineKeyboardButton("🗑️ مسح قاعدة البيانات", callback_data="clear_db"),
+        types.InlineKeyboardButton("🔙 مغادرة لوحة التحكم", callback_data="back_to_countries")
     )
     return markup
 
@@ -1041,7 +1041,7 @@ def admin_del_combo(call):
         name_ar, flag = get_country_info(code)
         rng = get_combo_range(code, idx)
         markup.add(types.InlineKeyboardButton(f"{flag} {name_ar} ({rng})", callback_data=f"del_combo_{code}_{idx}"))
-    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel", style='success'))
+    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel"))
     bot.edit_message_text("اختر الرينج للحذف:", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("del_combo_"))
@@ -1180,8 +1180,8 @@ def admin_force_sub(call):
         conn.close()
         st = "✅" if en else "❌"
         markup.add(types.InlineKeyboardButton(f"{st} {desc or url[:20]}", callback_data=f"edit_force_{cid}"))
-    markup.add(types.InlineKeyboardButton("➕ إضافة", callback_data="add_force_ch", style='danger'))
-    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel", style='success'))
+    markup.add(types.InlineKeyboardButton("➕ إضافة", callback_data="add_force_ch"))
+    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel"))
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data == "add_force_ch")
@@ -1221,10 +1221,10 @@ def edit_force_ch(call):
     url, desc, en = row
     text = f"🔧 {url}\nالوصف: {desc or '—'}\nالحالة: {'مفعلة' if en else 'معطلة'}"
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✏️ تعديل الوصف", callback_data=f"edit_desc_{cid}", style='success'))
-    markup.add(types.InlineKeyboardButton("❌ تعطيل" if en else "✅ تفعيل", callback_data=f"toggle_force_{cid}", style='success'))
-    markup.add(types.InlineKeyboardButton("🗑️ حذف", callback_data=f"del_force_{cid}", style='primary'))
-    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="force_sub_admin", style='success'))
+    markup.add(types.InlineKeyboardButton("✏️ تعديل الوصف", callback_data=f"edit_desc_{cid}"))
+    markup.add(types.InlineKeyboardButton("❌ تعطيل" if en else "✅ تفعيل", callback_data=f"toggle_force_{cid}"))
+    markup.add(types.InlineKeyboardButton("🗑️ حذف", callback_data=f"del_force_{cid}"))
+    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="force_sub_admin"))
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("toggle_force_"))
@@ -1265,9 +1265,9 @@ def edit_desc_exec(msg):
 def admin_private_combo(call):
     if not is_admin(call.from_user.id): return
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("➕ تعيين رينج خاص", callback_data="add_private_combo", style='primary'))
-    markup.add(types.InlineKeyboardButton("🗑️ حذف رينج خاص", callback_data="del_private_combo", style='primary'))
-    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel", style='success'))
+    markup.add(types.InlineKeyboardButton("➕ تعيين رينج خاص", callback_data="add_private_combo"))
+    markup.add(types.InlineKeyboardButton("🗑️ حذف رينج خاص", callback_data="del_private_combo"))
+    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel"))
     bot.edit_message_text("🔑 إدارة الرينجات الخاصة", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data == "add_private_combo")
@@ -1288,7 +1288,7 @@ def add_private_user(msg):
             buttons.append(types.InlineKeyboardButton(f"{flag} {name_ar}", callback_data=f"select_private_{uid}_{code}"))
         for i in range(0, len(buttons), 2):
             markup.row(*buttons[i:i+2])
-        markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_private_combo", style='success'))
+        markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_private_combo"))
         bot.reply_to(msg, "اختر الدولة:", reply_markup=markup)
     except:
         bot.reply_to(msg, "❌ معرف غير صحيح")
@@ -1343,8 +1343,8 @@ def admin_del_welcome_photo(call):
 def clear_db(call):
     if not is_admin(call.from_user.id): return
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✅ تأكيد", callback_data="confirm_clear_db", style='success'))
-    markup.add(types.InlineKeyboardButton("❌ إلغاء", callback_data="admin_panel", style='success'))
+    markup.add(types.InlineKeyboardButton("✅ تأكيد", callback_data="confirm_clear_db"))
+    markup.add(types.InlineKeyboardButton("❌ إلغاء", callback_data="admin_panel"))
     bot.edit_message_text("⚠️ تأكيد مسح قاعدة البيانات؟", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data == "confirm_clear_db")
