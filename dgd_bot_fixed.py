@@ -1,55 +1,27 @@
 # ======================================================================================
-# 𝘿𝙀𝙑𝙄𝙇 𝙉𝙐𝙈𝘽𝙀𝙍 - XWD SMS (النسخة النهائية المتكاملة مع آلية الجلب)
+# XWD SMS - النسخة النهائية (مع إشعار الأدمن عند نفاذ الرصيد)
 # المطور: hacker Taker
 # ======================================================================================
-
-import time
-import requests
-import json
-import re
-import os
-import sqlite3
-import threading
-import traceback
-import random
-import logging
+import time, requests, json, re, os, sqlite3, threading, traceback, random, logging
 from datetime import datetime
 from flask import Flask, jsonify
 import telebot
 from telebot import types
 
-# إعدادات التسجيل
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO,
-    handlers=[logging.FileHandler("xwd_bot.log"), logging.StreamHandler()]
-)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ======================================================================================
-# الإعدادات الأساسية (بياناتك)
-# ======================================================================================
 BOT_TOKEN = "8686995713:AAFTesnEDbFJcSgtM3IrURU0WtPdNkJtO4c"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
 DB_PATH = os.environ.get("DB_PATH", "xwd_bot.db")
 
-# ======================================================================================
-# مفاتيح الموقع الجديد
-# ======================================================================================
 XWD_API_KEY = "b2f34f1d36cd84328d9650ce65cfb03a"
 XWD_BASE_URL = "https://xwdsms.org/api/v1"
 
-# ======================================================================================
-# تعريف البوت
-# ======================================================================================
 bot = telebot.TeleBot(BOT_TOKEN)
-user_states = {}
 BOT_ACTIVE = True
 
-# ======================================================================================
-# قائمة الدول المتاحة
-# ======================================================================================
 AVAILABLE_COUNTRIES = {
     "22501": ("ساحل العاج", "🇨🇮", ["2250765XXXXX"]),
     "49155": ("ألمانيا", "🇩🇪", ["4915511382XXXX"]),
@@ -64,43 +36,30 @@ AVAILABLE_COUNTRIES = {
     "25471": ("كينيا", "🇰🇪", ["25471XXXXXX"]),
 }
 
-# ======================================================================================
-# إعداد قاعدة البيانات
-# ======================================================================================
 def init_db():
     try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT, last_name TEXT,
-            country_code TEXT, assigned_number TEXT, is_banned INTEGER DEFAULT 0
-        )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS combos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, country_code TEXT, combo_index INTEGER DEFAULT 1, range TEXT,
-            UNIQUE(country_code, combo_index)
-        )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS otp_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT, otp TEXT, full_message TEXT, timestamp TEXT, assigned_to INTEGER
-        )''')
+        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT, last_name TEXT, country_code TEXT, assigned_number TEXT, is_banned INTEGER DEFAULT 0)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS combos (id INTEGER PRIMARY KEY AUTOINCREMENT, country_code TEXT, combo_index INTEGER DEFAULT 1, range TEXT, UNIQUE(country_code, combo_index))''')
+        c.execute('''CREATE TABLE IF NOT EXISTS otp_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT, otp TEXT, full_message TEXT, timestamp TEXT, assigned_to INTEGER)''')
         c.execute('''CREATE TABLE IF NOT EXISTS bot_settings (key TEXT PRIMARY KEY, value TEXT)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS active_numbers (
-            number TEXT PRIMARY KEY, country_code TEXT, assigned_to INTEGER, 
-            status TEXT DEFAULT 'WAITING', otp_code TEXT, requested_at TEXT
-        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS active_numbers (number TEXT PRIMARY KEY, country_code TEXT, assigned_to INTEGER, status TEXT DEFAULT 'WAITING', otp_code TEXT, requested_at TEXT)''')
         c.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('bot_active', '1')")
         conn.commit(); conn.close()
-    except Exception as e: logger.error(f"❌ فشل في قاعدة البيانات: {e}")
+    except Exception as e: logger.error(f"❌ قاعدة بيانات: {e}")
 init_db()
 
-# ======================================================================================
-# دوال قاعدة البيانات
-# ======================================================================================
 def get_user(user_id):
     try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("SELECT * FROM users WHERE user_id=?", (user_id,)); row = c.fetchone(); conn.close(); return row
     except: return None
 
 def save_user(user_id, username="", first_name="", country_code=None, assigned_number=None):
-    try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); existing = get_user(user_id); if existing: if country_code is None: country_code = existing[4]; if assigned_number is None: assigned_number = existing[5]; c.execute("REPLACE INTO users (user_id, username, first_name, country_code, assigned_number) VALUES (?, ?, ?, ?, ?)", (user_id, username, first_name, country_code, assigned_number)); conn.commit(); conn.close()
+    try:
+        conn = sqlite3.connect(DB_PATH); c = conn.cursor(); existing = get_user(user_id)
+        if existing:
+            if country_code is None: country_code = existing[4]
+            if assigned_number is None: assigned_number = existing[5]
+        c.execute("REPLACE INTO users (user_id, username, first_name, country_code, assigned_number) VALUES (?, ?, ?, ?, ?)", (user_id, username, first_name, country_code, assigned_number)); conn.commit(); conn.close()
     except: pass
 
 def is_banned(user_id): user = get_user(user_id); return user and user[6] == 1
@@ -135,9 +94,6 @@ def update_active_number(number, otp_code):
     try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("UPDATE active_numbers SET status='SUCCESS', otp_code=? WHERE number=?", (otp_code, re.sub(r'\D', '', number))); conn.commit(); conn.close()
     except: pass
 
-# ======================================================================================
-# دوال الاتصال بـ XWD API (آلية جلب الأرقام)
-# ======================================================================================
 def xwd_get_number(range_str):
     url = f"{XWD_BASE_URL}/get-number"
     headers = {"x-api-key": XWD_API_KEY, "Content-Type": "application/json"}
@@ -149,6 +105,11 @@ def xwd_get_number(range_str):
         if not data.get("success"):
             msg = data.get("message", "فشل غير معروف")
             if "balance" in msg.lower() or "insufficient" in msg.lower():
+                # إرسال إشعار للأدمن لأن الرصيد خلص
+                for admin in ADMIN_IDS:
+                    try:
+                        bot.send_message(admin, "⚠️ <b>تنبيه هام:</b>\nرصيد موقع XWD SMS قد نفذ (0.0000 دولار).\nالبوت متوقف عن جلب الأرقام.\nيرجى شحن الحساب أو البحث عن موقع بديل.", parse_mode="HTML")
+                    except: pass
                 msg = "⚠️ رصيد الموقع غير كافٍ، يرجى شحن الحساب."
             raise Exception(msg)
         number = data.get("number")
@@ -169,12 +130,7 @@ def xwd_check_otp(phone):
         return {"status": "SUKSES", "otp": otp} if otp else {"status": "WAIT", "otp": None}
     except Exception as e: logger.error(f"XWD check_otp error: {e}"); raise
 
-# ======================================================================================
-# دوال التنسيق والتمويه (الأمان)
-# ======================================================================================
-def mask_number(num):
-    """تمويه الرقم في الجروب (إظهار XXXX + آخر 4 أرقام)"""
-    num = str(num); return "XXXX" + num[-4:] if len(num) > 8 else num
+def mask_number(num): num = str(num); return "XXXX" + num[-4:] if len(num) > 8 else num
 
 def get_country_info_by_num(num):
     num = re.sub(r'\D', '', str(num))
@@ -185,9 +141,6 @@ def get_country_info_by_num(num):
 def extract_otp(t): 
     m = re.search(r'(?:code|otp|رمز|كود|verification|pin)[:\s]*(\d{4,8})', t, re.IGNORECASE) or re.search(r'\b(\d{4,8})\b', t); return m.group(1) if m else "N/A"
 
-# ======================================================================================
-# حلقة جلب OTP الخلفية (آلية العمل: فحص كل 3 ثوانٍ)
-# ======================================================================================
 def main_loop():
     sent_ids = set()
     if os.path.exists("sent_msgs.json"):
@@ -201,22 +154,17 @@ def main_loop():
                     res = xwd_check_otp(num)
                     if res["status"] == "SUKSES" and res["otp"]:
                         otp = res["otp"]; update_active_number(num, otp); remove_active_number(num); name, flag = get_country_info_by_num(num)
-                        # 1. إرسال للجروب (مع تمويه الرقم)
                         g_txt = f"✨ OTP\n🌍 {flag} {name}\n☎ +{mask_number(num)}\n🔐 {otp}"
                         g_markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("📋 نسخ الكود", callback_data=f"copy_{otp}"))
                         for ch in CHAT_IDS: bot.send_message(ch, g_txt, parse_mode="HTML", reply_markup=g_markup)
-                        # 2. إرسال للمستخدم (الرقم كامل)
                         if assigned_to:
                             u_txt = f"✨ OTP الخاص بك\n🌍 {flag} {name}\n☎ +{num}\n🔐 {otp}"
                             u_markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("📋 نسخ الكود", callback_data=f"copy_{otp}"))
                             bot.send_message(assigned_to, u_txt, parse_mode="HTML", reply_markup=u_markup)
                 except: pass
-            time.sleep(3) # الفحص السريع جداً
+            time.sleep(3) # سريع جداً (فحص كل 3 ثوانٍ)
         except: time.sleep(5)
 
-# ======================================================================================
-# أوامر البوت وأزرار التفاعل
-# ======================================================================================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("copy_"))
 def copy_h(c): bot.answer_callback_query(c.id, f"✅ تم نسخ الكود: {c.data.split('_')[1]}", show_alert=True)
 
@@ -254,9 +202,6 @@ def start_h(m):
     save_user(m.from_user.id, username=m.from_user.username or "", first_name=m.from_user.first_name or "")
     bot.send_message(m.chat.id, "🌍 أهلاً! اختر الدولة للحصول على رقم:", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup(row_width=2).add(*[types.InlineKeyboardButton(f"{f} {n}", callback_data=f"country_{c}") for c, (n, f, _) in AVAILABLE_COUNTRIES.items()]))
 
-# ======================================================================================
-# تشغيل البوت والخادم (ضروري لـ Render)
-# ======================================================================================
 if __name__ == "__main__":
     threading.Thread(target=main_loop, daemon=True).start()
     while True:
