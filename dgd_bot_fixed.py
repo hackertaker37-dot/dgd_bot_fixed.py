@@ -1,5 +1,5 @@
-======================================================================================
-# بوت DGDNetwork - النسخة النهائية المتكاملة (تصحيح كامل للرابط)
+# ======================================================================================
+# بوت DGDNetwork - النسخة النهائية الخارقة (حل مشكلة 403 بشكل جذري)
 # المطور: hacker Taker
 # ======================================================================================
 
@@ -32,18 +32,16 @@ logger = logging.getLogger(__name__)
 # ======================================================================================
 # الإعدادات الأساسية
 # ======================================================================================
-BOT_TOKEN = "8686995713:AAFTesnEDbFJcSgtM3IrURU0WtPdNkJtO4c" 
+BOT_TOKEN = "8686995713:AAFTesnEDbFJcSgtM3IrURU0WtPdNkJtO4c"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
 DB_PATH = os.environ.get("DB_PATH", "dgd_bot.db")
 
 # ======================================================================================
-# مفتاح API والروابط (تم التصحيح ليطابق المتصفح في الصورة 2)
+# مفتاح API والروابط (الرابط النهائي الصحيح)
 # ======================================================================================
 DGD_API_KEY = "dgd_e2a755bfa8b37b06728b01c6178d4799780e7d62b6696c8e"
-# =========================== هذا هو التصحيح الجوهري ===========================
-DGD_BASE_URL = "https://dgd.dgddigital.com" 
-# ==============================================================================
+DGD_BASE_URL = "https://dgd.dgddigital.com"
 
 # ======================================================================================
 # تعريف البوت
@@ -66,7 +64,7 @@ AVAILABLE_COUNTRIES = {
 DEFAULT_RANGES = {code: ranges for code, (_, _, ranges) in AVAILABLE_COUNTRIES.items()}
 
 # ======================================================================================
-# قاعدة البيانات (مبسطة)
+# قاعدة البيانات
 # ======================================================================================
 def init_db():
     try:
@@ -133,7 +131,7 @@ def init_db():
 init_db()
 
 # ======================================================================================
-# دوال أساسية (مختصرة)
+# دوال قاعدة البيانات
 # ======================================================================================
 def get_user(user_id):
     try:
@@ -408,14 +406,22 @@ def force_sub_markup():
     return markup
 
 # ======================================================================================
-# دوال DGD API (تم تحديث الرابط الأساسي)
+# دوال DGD API (نسخة الهروب من 403 بإضافة User-Agent)
 # ======================================================================================
 def dgd_get_number(range_str):
     url = f"{DGD_BASE_URL}/api/v1/user/getnum"
-    headers = {"X-API-KEY": DGD_API_KEY, "Content-Type": "application/json", "Accept": "application/json"}
+    # إضافة User-Agent لخداع الخادم وتجنب الحظر 403
+    headers = {
+        "X-API-KEY": DGD_API_KEY, 
+        "Content-Type": "application/json", 
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
     payload = {"range": range_str, "is_national": False, "remove_plus": False}
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=30)
+        if resp.status_code == 403:
+            raise Exception("الخادم رفض الطلب (403). تأكد من صحة الـ API Key أو انتظر قليلاً.")
         resp.raise_for_status()
         data = resp.json()
         if not data.get("ok"):
@@ -430,10 +436,16 @@ def dgd_get_number(range_str):
 
 def dgd_check_number(phone):
     url = f"{DGD_BASE_URL}/api/v1/user/checknum"
-    headers = {"X-API-KEY": DGD_API_KEY, "Accept": "application/json"}
+    headers = {
+        "X-API-KEY": DGD_API_KEY, 
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
     params = {"nomor": phone}
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=30)
+        if resp.status_code == 403:
+            raise Exception("الخادم رفض الطلب (403). تحقق من الـ API Key.")
         resp.raise_for_status()
         data = resp.json()
         if not data.get("ok"):
@@ -816,7 +828,7 @@ def handle_country(call):
         try:
             number = dgd_get_number(range_str)
         except Exception as e:
-            bot.answer_callback_query(call.id, f"❌ فشل جلب الرقم: {str(e)[:80]}", show_alert=True)
+            bot.answer_callback_query(call.id, f"❌ فشل جلب الرقم: {str(e)}", show_alert=True)
             return
         clean_num = re.sub(r'\D', '', number)
         old = get_user(user_id)
@@ -852,7 +864,7 @@ def change_number(call):
         try:
             number = dgd_get_number(range_str)
         except Exception as e:
-            bot.answer_callback_query(call.id, f"❌ فشل: {str(e)[:80]}", show_alert=True)
+            bot.answer_callback_query(call.id, f"❌ فشل: {str(e)}", show_alert=True)
             return
         clean_num = re.sub(r'\D', '', number)
         old = get_user(user_id)
