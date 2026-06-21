@@ -1,5 +1,5 @@
 # ======================================================================================
-# 𝙓𝙒𝘿 𝙎𝙈𝙎 - النسخة النهائية (حل مشكلة 403 بإشعار واضح)
+# 𝙓𝙒𝘿 𝙎𝙈𝙎 - النسخة النهائية (معالجة ذكية لخطأ 403 ورسائل واضحة)
 # المطور: hacker Taker
 # ======================================================================================
 
@@ -124,7 +124,7 @@ def update_active_number(number, otp_code):
     except: pass
 
 # ======================================================================================
-# دوال الاتصال بـ XWD API (تم علاج خطأ 403)
+# دوال الاتصال بـ XWD API (معالجة 403 بشكل ذكي)
 # ======================================================================================
 def xwd_get_number(range_str):
     url = f"{XWD_BASE_URL}/api/v1/get-number"
@@ -135,22 +135,24 @@ def xwd_get_number(range_str):
         if resp.status_code in [301, 302, 307, 308]:
             raise Exception("الموقع يقوم بإعادة التوجيه إلى HTTPS ولا يقبل الاتصال.")
         
-        # 🟢 الحل الجديد: التعامل مع خطأ 403 (الرصيد صفر أو المفتاح محظور)
+        # 🟢 معالجة ذكية لخطأ 403
         if resp.status_code == 403:
-            raise Exception("⚠️ فشل الجلب: الرصيد غير كافٍ أو أن المفتاح محظور (403).")
+            # محاولة قراءة سبب المنع من الموقع نفسه
+            try:
+                err_data = resp.json()
+                msg = err_data.get("message", "لا يوجد سبب محدد من الخادم")
+            except:
+                msg = "الخادم رفض الطلب (403)"
+            
+            logger.error(f"XWD API 403 Error: {resp.text}")
+            raise Exception(f"⚠️ الخادم رفض الطلب (403): {msg}. السبب المحتمل: رصيد غير كافٍ أو مفتاح API محظور.")
             
         if resp.status_code != 200:
             raise Exception(f"خطأ في الخادم (الكود: {resp.status_code})")
+            
         data = resp.json()
         if not data.get("success"):
             msg = data.get("message", "فشل غير معروف")
-            if "balance" in msg.lower() or "insufficient" in msg.lower():
-                for admin in ADMIN_IDS:
-                    try:
-                        bot.send_message(admin, "⚠️ <b>تنبيه هام:</b>\nرصيد موقع XWD SMS قد نفذ (0.0000 دولار).\nالبوت متوقف عن جلب الأرقام.\nيرجى شحن الحساب.", parse_mode="HTML")
-                    except:
-                        pass
-                msg = "⚠️ رصيد الموقع غير كافٍ، يرجى شحن الحساب."
             raise Exception(msg)
         number = data.get("number")
         if not number:
@@ -168,9 +170,16 @@ def xwd_check_otp(phone):
         resp = requests.get(url, headers=headers, params=params, timeout=20, allow_redirects=False)
         if resp.status_code in [301, 302, 307, 308]:
             raise Exception("الموقع يقوم بإعادة التوجيه ولا يقبل الاتصال.")
-        # 🟢 التعامل مع 403 هنا أيضاً
+        
+        # 🟢 معالجة ذكية لخطأ 403 في الفحص
         if resp.status_code == 403:
-            raise Exception("⚠️ فشل الفحص: الصلاحيات غير كافية.")
+            try:
+                err_data = resp.json()
+                msg = err_data.get("message", "لا يوجد سبب محدد")
+            except:
+                msg = "ممنوع الوصول"
+            raise Exception(f"⚠️ فحص الرقم مرفوض (403): {msg}. تأكد من صلاحية المفتاح والرصيد.")
+            
         if resp.status_code != 200:
             raise Exception(f"خطأ في الخادم (الكود: {resp.status_code})")
         data = resp.json()
@@ -188,6 +197,8 @@ def xwd_get_balance():
     headers = {"x-api-key": XWD_API_KEY, "Accept": "application/json"}
     try:
         resp = requests.get(url, headers=headers, timeout=20, allow_redirects=False)
+        if resp.status_code == 403:
+            raise Exception("الرصيد مرفوض (403). قد يكون المفتاح محظوراً أو الرصيد صفر.")
         if resp.status_code != 200:
             raise Exception("تعذر جلب الرصيد")
         data = resp.json()
@@ -197,7 +208,7 @@ def xwd_get_balance():
             return 0.0
     except Exception as e:
         logger.error(f"XWD balance error: {e}")
-        return 0.0
+        raise
 
 # ======================================================================================
 # دوال التنسيق والأمان
@@ -253,9 +264,13 @@ def main_loop():
                             u_txt = f"✨ OTP الخاص بك\n🌍 {flag} {name}\n☎ +{num}\n🔐 {otp}"
                             u_markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("📋 نسخ الكود", callback_data=f"copy_{otp}"))
                             bot.send_message(assigned_to, u_txt, parse_mode="HTML", reply_markup=u_markup)
-                except: pass
+                except Exception as e:
+                    # طباعة خطأ الفحص في السجل لكن لا توقف الحلقة
+                    logger.error(f"Error checking {num}: {e}")
             time.sleep(3)
-        except: time.sleep(5)
+        except Exception as e:
+            logger.error(f"Main loop error: {e}")
+            time.sleep(5)
 
 # ======================================================================================
 # الأزرار والرسائل
@@ -279,7 +294,6 @@ def country_h(c):
             name, flag = get_country_info_by_num(clean)
             msg = f"◈ الرقم: <code>+{clean}</code>\n◈ الدولة: {flag} {name}\n◈ الحالة: ⏳ انتظر OTP..."
             
-            # الأزرار المضمنة
             markup = types.InlineKeyboardMarkup(row_width=1)
             markup.row(
                 types.InlineKeyboardButton("🔄 تغيير الرقم", callback_data=f"country_{code}"),
@@ -294,7 +308,8 @@ def country_h(c):
             bot.answer_callback_query(c.id, "✅ تم تعيين الرقم.")
         except Exception as e:
             bot.edit_message_text(f"❌ فشل جلب الرقم:\n{str(e)}", c.message.chat.id, c.message.message_id)
-    except Exception as e: logger.error(f"Country Error: {e}")
+    except Exception as e:
+        logger.error(f"Country Error: {e}")
 
 @bot.callback_query_handler(func=lambda c: c.data == "back")
 def back_h(c):
@@ -312,13 +327,9 @@ def start_h(m):
 # ======================================================================================
 # معالجة أزرار لوحة المفاتيح (Reply Buttons)
 # ======================================================================================
-
-# 1. زر "📱 الحصول على رقم"
 @bot.message_handler(func=lambda m: m.text == "📱 الحصول على رقم")
-def get_num_handler(m):
-    back_h(m)
+def get_num_handler(m): back_h(m)
 
-# 2. زر "💰 الرصيد"
 @bot.message_handler(func=lambda m: m.text == "💰 الرصيد")
 def balance_handler(m):
     try:
@@ -327,9 +338,8 @@ def balance_handler(m):
         msg = f"💰 <b>الرصيد الحالي في الموقع:</b>\n<code>{bal_str} دولار</code>"
         bot.reply_to(m, msg, parse_mode="HTML")
     except Exception as e:
-        bot.reply_to(m, "❌ تعذر جلب الرصيد، حاول لاحقاً.")
+        bot.reply_to(m, f"❌ تعذر جلب الرصيد:\n{str(e)}")
 
-# 3. زر "🔄 تبديل الرقم"
 @bot.message_handler(func=lambda m: m.text == "🔄 تبديل الرقم")
 def change_num_handler(m):
     user = get_user(m.from_user.id)
@@ -343,7 +353,6 @@ def change_num_handler(m):
     else:
         bot.reply_to(m, "⚠️ ليس لديك رقم مخصص حالياً. احصل على رقم أولاً عبر زر '📱 الحصول على رقم'.")
 
-# 4. زر "📊 الإحصائيات"
 @bot.message_handler(func=lambda m: m.text == "📊 الإحصائيات")
 def stats_handler(m):
     users_count = len(get_all_users())
@@ -351,14 +360,12 @@ def stats_handler(m):
     msg = f"📊 <b>إحصائيات البوت:</b>\n👥 عدد المستخدمين: {users_count}\n📱 أرقام نشطة حالياً: {active}"
     bot.reply_to(m, msg, parse_mode="HTML")
 
-# 5. زر "🤝 شارك واربح"
 @bot.message_handler(func=lambda m: m.text == "🤝 شارك واربح")
 def refer_handler(m):
     bot_username = "Taker_OTP_BOT"
     msg = f"🤝 <b>شارك واربح!</b>\n\nادع أصدقائك لاستخدام البوت واربح المكافآت!\n\nرابط الدعوة الخاص بك:\n<code>https://t.me/{bot_username}?start={m.from_user.id}</code>\n\nانسخ الرابط وشاركه في الجروبات."
     bot.reply_to(m, msg, parse_mode="HTML")
 
-# 6. زر "🔗 جروب البوت"
 @bot.message_handler(func=lambda m: m.text == "🔗 جروب البوت")
 def group_link_handler(m):
     bot.reply_to(m, "🔗 <b>انضم لجروب الأكواد الرسمي:</b>\nhttps://t.me/numhj", parse_mode="HTML")
