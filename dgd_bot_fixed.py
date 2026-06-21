@@ -1,5 +1,5 @@
 # ======================================================================================
-# XWD SMS - النسخة النهائية والمتكاملة (تعمل بالمفتاح الجديد والرصيد المجاني)
+# 𝘿𝙀𝙑𝙄𝙇 𝙉𝙐𝙈𝘽𝙀𝙍 - XWD SMS (النسخة النهائية المتكاملة مع آلية الجلب)
 # المطور: hacker Taker
 # ======================================================================================
 
@@ -18,27 +18,37 @@ from flask import Flask, jsonify
 import telebot
 from telebot import types
 
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
+# إعدادات التسجيل
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    handlers=[logging.FileHandler("xwd_bot.log"), logging.StreamHandler()]
+)
 logger = logging.getLogger(__name__)
 
-# إعدادات البوت
+# ======================================================================================
+# الإعدادات الأساسية (بياناتك)
+# ======================================================================================
 BOT_TOKEN = "8686995713:AAFTesnEDbFJcSgtM3IrURU0WtPdNkJtO4c"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
 DB_PATH = os.environ.get("DB_PATH", "xwd_bot.db")
 
-# ============================
-# 🔑 مفتاح API الخاص بك (تم التحديث)
+# ======================================================================================
+# مفاتيح الموقع الجديد
+# ======================================================================================
 XWD_API_KEY = "b2f34f1d36cd84328d9650ce65cfb03a"
-# ============================
 XWD_BASE_URL = "https://xwdsms.org/api/v1"
 
+# ======================================================================================
+# تعريف البوت
+# ======================================================================================
 bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
 BOT_ACTIVE = True
 
 # ======================================================================================
-# قائمة الدول والرينجات المتاحة حسب موقع XWD
+# قائمة الدول المتاحة
 # ======================================================================================
 AVAILABLE_COUNTRIES = {
     "22501": ("ساحل العاج", "🇨🇮", ["2250765XXXXX"]),
@@ -55,7 +65,7 @@ AVAILABLE_COUNTRIES = {
 }
 
 # ======================================================================================
-# قاعدة البيانات (SQLite)
+# إعداد قاعدة البيانات
 # ======================================================================================
 def init_db():
     try:
@@ -125,16 +135,8 @@ def update_active_number(number, otp_code):
     try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("UPDATE active_numbers SET status='SUCCESS', otp_code=? WHERE number=?", (otp_code, re.sub(r'\D', '', number))); conn.commit(); conn.close()
     except: pass
 
-def get_setting(key):
-    try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("SELECT value FROM bot_settings WHERE key=?", (key,)); row = c.fetchone(); conn.close(); return row[0] if row else None
-    except: return None
-
-def set_setting(key, value):
-    try: conn = sqlite3.connect(DB_PATH); c = conn.cursor(); c.execute("REPLACE INTO bot_settings (key, value) VALUES (?, ?)", (key, value)); conn.commit(); conn.close()
-    except: pass
-
 # ======================================================================================
-# دوال الاتصال بـ XWD API
+# دوال الاتصال بـ XWD API (آلية جلب الأرقام)
 # ======================================================================================
 def xwd_get_number(range_str):
     url = f"{XWD_BASE_URL}/get-number"
@@ -146,7 +148,6 @@ def xwd_get_number(range_str):
         data = resp.json()
         if not data.get("success"):
             msg = data.get("message", "فشل غير معروف")
-            # إذا نفذ الرصيد، يرسل رسالة واضحة
             if "balance" in msg.lower() or "insufficient" in msg.lower():
                 msg = "⚠️ رصيد الموقع غير كافٍ، يرجى شحن الحساب."
             raise Exception(msg)
@@ -169,9 +170,10 @@ def xwd_check_otp(phone):
     except Exception as e: logger.error(f"XWD check_otp error: {e}"); raise
 
 # ======================================================================================
-# دوال التنسيق والأمان
+# دوال التنسيق والتمويه (الأمان)
 # ======================================================================================
 def mask_number(num):
+    """تمويه الرقم في الجروب (إظهار XXXX + آخر 4 أرقام)"""
     num = str(num); return "XXXX" + num[-4:] if len(num) > 8 else num
 
 def get_country_info_by_num(num):
@@ -184,7 +186,7 @@ def extract_otp(t):
     m = re.search(r'(?:code|otp|رمز|كود|verification|pin)[:\s]*(\d{4,8})', t, re.IGNORECASE) or re.search(r'\b(\d{4,8})\b', t); return m.group(1) if m else "N/A"
 
 # ======================================================================================
-# حلقة جلب OTP الخلفية (سريعة جداً)
+# حلقة جلب OTP الخلفية (آلية العمل: فحص كل 3 ثوانٍ)
 # ======================================================================================
 def main_loop():
     sent_ids = set()
@@ -199,17 +201,17 @@ def main_loop():
                     res = xwd_check_otp(num)
                     if res["status"] == "SUKSES" and res["otp"]:
                         otp = res["otp"]; update_active_number(num, otp); remove_active_number(num); name, flag = get_country_info_by_num(num)
-                        # إرسال للجروب (رقم مخفي)
+                        # 1. إرسال للجروب (مع تمويه الرقم)
                         g_txt = f"✨ OTP\n🌍 {flag} {name}\n☎ +{mask_number(num)}\n🔐 {otp}"
                         g_markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("📋 نسخ الكود", callback_data=f"copy_{otp}"))
                         for ch in CHAT_IDS: bot.send_message(ch, g_txt, parse_mode="HTML", reply_markup=g_markup)
-                        # إرسال للمستخدم (رقم كامل)
+                        # 2. إرسال للمستخدم (الرقم كامل)
                         if assigned_to:
                             u_txt = f"✨ OTP الخاص بك\n🌍 {flag} {name}\n☎ +{num}\n🔐 {otp}"
                             u_markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("📋 نسخ الكود", callback_data=f"copy_{otp}"))
                             bot.send_message(assigned_to, u_txt, parse_mode="HTML", reply_markup=u_markup)
                 except: pass
-            time.sleep(3) # فحص كل 3 ثوان
+            time.sleep(3) # الفحص السريع جداً
         except: time.sleep(5)
 
 # ======================================================================================
@@ -253,7 +255,7 @@ def start_h(m):
     bot.send_message(m.chat.id, "🌍 أهلاً! اختر الدولة للحصول على رقم:", parse_mode="HTML", reply_markup=types.InlineKeyboardMarkup(row_width=2).add(*[types.InlineKeyboardButton(f"{f} {n}", callback_data=f"country_{c}") for c, (n, f, _) in AVAILABLE_COUNTRIES.items()]))
 
 # ======================================================================================
-# تشغيل البوت والخادم (Render)
+# تشغيل البوت والخادم (ضروري لـ Render)
 # ======================================================================================
 if __name__ == "__main__":
     threading.Thread(target=main_loop, daemon=True).start()
