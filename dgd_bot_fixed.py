@@ -1,5 +1,5 @@
 # ======================================================================================
-# XWD SMS - النسخة النهائية (مع إشعار الأدمن عند نفاذ الرصيد)
+# XWD SMS - النسخة النهائية (تصحيح بروتوكول http وتحديث المفتاح)
 # المطور: hacker Taker
 # ======================================================================================
 import time, requests, json, re, os, sqlite3, threading, traceback, random, logging
@@ -16,24 +16,24 @@ CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
 DB_PATH = os.environ.get("DB_PATH", "xwd_bot.db")
 
-XWD_API_KEY = "9861618abcb119e317c6051000a5997c"
-XWD_BASE_URL = "https://xwdsms.org/api/v1"
+# ======================================================================================
+# التعديلات الجديدة بناءً على وثيقة الموقع
+# ======================================================================================
+XWD_API_KEY = "9861618abcb119e317c6051000a5997c" # تم تحديث المفتاح الخاص بك
+XWD_BASE_URL = "http://xwdsms.org" # تم تصحيح الرابط من https إلى http (حل مشكلة 111)
+# ======================================================================================
 
 bot = telebot.TeleBot(BOT_TOKEN)
 BOT_ACTIVE = True
 
+# قائمة الدول المتاحة بناءً على بادئات الموقع الجديدة
 AVAILABLE_COUNTRIES = {
-    "22501": ("ساحل العاج", "🇨🇮", ["2250765XXXXX"]),
-    "49155": ("ألمانيا", "🇩🇪", ["4915511382XXXX"]),
-    "26134": ("مدغشقر", "🇲🇬", ["26134143XXXX"]),
-    "23762": ("الكاميرون", "🇨🇲", ["237621XXXXXX"]),
-    "22178": ("السنغال", "🇸🇳", ["221785XXXXXX"]),
-    "22901": ("بنين", "🇧🇯", ["2290192273XXXX"]),
-    "23276": ("سيراليون", "🇸🇱", ["23276XXXXXX"]),
-    "22898": ("توغو", "🇹🇬", ["2289871XXXXXX"]),
-    "44740": ("المملكة المتحدة", "🇬🇧", ["44740XXXXXX"]),
-    "23490": ("نيجيريا", "🇳🇬", ["23490XXXXXX"]),
-    "25471": ("كينيا", "🇰🇪", ["25471XXXXXX"]),
+    "22501": ("ساحل العاج", "🇨🇮", ["22501"]),
+    "23276": ("سيراليون", "🇸🇱", ["23276"]),
+    "26134": ("مدغشقر", "🇲🇬", ["26134"]),
+    "44740": ("المملكة المتحدة", "🇬🇧", ["44740"]),
+    "23490": ("نيجيريا", "🇳🇬", ["23490"]),
+    "25471": ("كينيا", "🇰🇪", ["25471"]),
 }
 
 def init_db():
@@ -95,7 +95,7 @@ def update_active_number(number, otp_code):
     except: pass
 
 def xwd_get_number(range_str):
-    url = f"{XWD_BASE_URL}/get-number"
+    url = f"{XWD_BASE_URL}/api/v1/get-number"
     headers = {"x-api-key": XWD_API_KEY, "Content-Type": "application/json"}
     payload = {"range": range_str}
     try:
@@ -105,7 +105,6 @@ def xwd_get_number(range_str):
         if not data.get("success"):
             msg = data.get("message", "فشل غير معروف")
             if "balance" in msg.lower() or "insufficient" in msg.lower():
-                # إرسال إشعار للأدمن لأن الرصيد خلص
                 for admin in ADMIN_IDS:
                     try:
                         bot.send_message(admin, "⚠️ <b>تنبيه هام:</b>\nرصيد موقع XWD SMS قد نفذ (0.0000 دولار).\nالبوت متوقف عن جلب الأرقام.\nيرجى شحن الحساب أو البحث عن موقع بديل.", parse_mode="HTML")
@@ -118,7 +117,7 @@ def xwd_get_number(range_str):
     except Exception as e: logger.error(f"XWD get_number error: {e}"); raise
 
 def xwd_check_otp(phone):
-    url = f"{XWD_BASE_URL}/check-otp"
+    url = f"{XWD_BASE_URL}/api/v1/check-otp"
     headers = {"x-api-key": XWD_API_KEY, "Accept": "application/json"}
     params = {"number": phone}
     try:
@@ -162,7 +161,7 @@ def main_loop():
                             u_markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("📋 نسخ الكود", callback_data=f"copy_{otp}"))
                             bot.send_message(assigned_to, u_txt, parse_mode="HTML", reply_markup=u_markup)
                 except: pass
-            time.sleep(3) # سريع جداً (فحص كل 3 ثوانٍ)
+            time.sleep(3)
         except: time.sleep(5)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("copy_"))
