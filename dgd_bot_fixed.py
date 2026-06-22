@@ -11,7 +11,7 @@ API_KEY = "4886d4297bcfb669bf3b3d2d8d1c4ee2"
 BASE_URL = "http://xwdsms.org"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
-DB_PATH = "taker_otp.db"
+DB_PATH = "taker_otp_final.db"
 DELETE_AFTER = 180  # 3 دقائق
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -89,7 +89,7 @@ DEFAULT_PREFIXES = [
     "24910", "49155", "23762", "22178", "22901", "22898",
 ]
 
-# ════════════════ نصوص الترجمة ════════════════
+# نصوص الترجمة
 TEXTS = {
     "lang_select": {"ar": "🌐 *اختر لغتك*", "en": "🌐 *Select Language*"},
     "welcome": {"ar": "🔰 *أهلاً بك في Taker OTP*\n\n• أرقام وهمية للتفعيل\n• أكواد فورية\n\n*اختر الدولة:*", "en": "🔰 *Welcome to Taker OTP*\n\n• Virtual numbers\n• Instant codes\n\n*Select country:*"},
@@ -145,7 +145,7 @@ def btn(key, uid):
     lang = u[3] if u and u[3] else "ar"
     return BTN[key][lang]
 
-# ════════════════ قاعدة البيانات ════════════════
+# قاعدة البيانات
 class Database:
     def __init__(self, path):
         self.conn = sqlite3.connect(path, check_same_thread=False)
@@ -258,7 +258,7 @@ class Database:
 
 db = Database(DB_PATH)
 
-# ════════════════ API ════════════════
+# API
 class API:
     def __init__(self):
         self.s = requests.Session()
@@ -293,9 +293,9 @@ class API:
 
 api = API()
 
-# ════════════════ دوال مساعدة ════════════════
+# دوال مساعدة
 def clean_phone(num):
-    return re.sub(r'[^\d]', '', str(num))  # يزيل كل شيء غير الأرقام
+    return re.sub(r'[^\d]', '', str(num))
 
 def detect_service(txt):
     t = str(txt).lower()
@@ -364,7 +364,7 @@ def find_flag_by_name(name):
             return c_flag
     return ""
 
-# ════════════════ بوت تيليجرام ════════════════
+# البوت
 bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
 
@@ -378,11 +378,7 @@ def main_kb(uid):
 
 def countries_menu():
     mk = types.InlineKeyboardMarkup(row_width=2)
-    btns = []
-    for p in db.prefixes():
-        name, flag = db.get_country_info(p)
-        display = f"{flag} {name}".strip()
-        btns.append(types.InlineKeyboardButton(display, callback_data=f"get_{p}"))
+    btns = [types.InlineKeyboardButton(f"{db.get_country_info(p)[1]} {db.get_country_info(p)[0]}".strip(), callback_data=f"get_{p}") for p in db.prefixes()]
     for i in range(0, len(btns), 2): mk.row(*btns[i:i+2])
     return mk
 
@@ -410,7 +406,6 @@ def show_home(cid, uid):
     else: bot.send_message(cid, txt, parse_mode="Markdown", reply_markup=mk)
     bot.send_message(cid, "• • •", reply_markup=main_kb(uid))
 
-# ════════════════ أوامر ════════════════
 @bot.message_handler(commands=['start'])
 def start(msg):
     uid, cid = msg.from_user.id, msg.chat.id
@@ -495,7 +490,7 @@ def menu_back(call):
         except: pass
         show_home(cid, uid)
 
-# ════════════════ handlers الإدارة ════════════════
+# handlers الإدارة
 @bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "add_prefix")
 def add_prefix_handler(message):
     uid = message.from_user.id
@@ -572,7 +567,7 @@ def save_photo_handler(message):
     bot.send_message(message.chat.id, "✅ تم حفظ الصورة")
     del user_states[message.from_user.id]
 
-# ════════════════ الأزرار العادية ════════════════
+# الأزرار العادية
 @bot.message_handler(func=lambda m: m.text in [
     "📱 رقم جديد", "🌍 الدول", "📊 إحصائياتي",
     "💰 رصيدي", "🤝 دعوة", "🟢 المرور",
@@ -589,10 +584,7 @@ def handle_buttons(message):
         bot.send_message(message.chat.id, t("choose_country", uid), parse_mode="Markdown", reply_markup=countries_menu())
     elif txt in [btn("countries", uid)]:
         pfx = db.prefixes()
-        lines = []
-        for p in pfx:
-            name, flag = db.get_country_info(p)
-            lines.append(f"{flag} {name} (`{p}`)" if flag else f"{name} (`{p}`)")
+        lines = [f"{db.get_country_info(p)[1]} {db.get_country_info(p)[0]} (`{p}`)".strip() for p in pfx]
         bot.send_message(message.chat.id, t("countries_list", uid) + "\n".join(lines), parse_mode="Markdown")
     elif txt in [btn("stats", uid)]:
         u = db.get_user(uid)
@@ -622,7 +614,7 @@ def handle_buttons(message):
     elif txt in [btn("admin", uid)] and uid in ADMIN_IDS:
         admin_panel(message)
 
-# ════════════════ لوحة الإدارة (callbacks) ════════════════
+# لوحة الإدارة
 def admin_panel(message):
     uid = message.from_user.id
     cid = message.chat.id
@@ -733,7 +725,7 @@ def clear_data_cb(call):
 def admin_back_cb(call):
     admin_panel(call.message)
 
-# ════════════════ حلقة فحص OTP ════════════════
+# حلقة OTP
 def otp_loop():
     while True:
         try:
@@ -761,7 +753,7 @@ def otp_loop():
         except: pass
         time.sleep(3)
 
-# ════════════════ Flask ════════════════
+# Flask
 app = Flask(__name__)
 @app.route('/'): return "OK"
 @app.route('/health'): return jsonify(status="ok"), 200
