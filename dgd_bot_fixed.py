@@ -7,11 +7,11 @@ from flask import Flask, jsonify
 
 # ════════════════ الإعدادات ════════════════
 BOT_TOKEN = "8686995713:AAG6fy9oZlGIn8SvnQUY_zMq_Eeo6OJYqRY"
-API_KEY = "4886d4297bcfb669bf3b3d2d8d1c4ee2"
-BASE_URL = "http://xwdsms.org"
-CHAT_IDS = ["-1003789271722"]
+API_KEY   = "4886d4297bcfb669bf3b3d2d8d1c4ee2"
+BASE_URL  = "http://xwdsms.org"
+CHAT_IDS  = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
-DB_PATH = "taker_pro.db"
+DB_PATH   = "taker_pro.db"
 DELETE_AFTER = 180
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -105,7 +105,7 @@ TEXTS = {
     "no_active": {"ar": "⚠️ لا توجد أرقام نشطة", "en": "⚠️ No active numbers"},
     "prefix_added": {"ar": "✅ *تمت إضافة الدولة*\n\n🌍 {flag} {name}\n🔢 `{prefix}`", "en": "✅ *Country Added*\n\n🌍 {flag} {name}\n🔢 `{prefix}`"},
     "prefix_exists": {"ar": "⚠️ *موجودة مسبقاً*\n\n🌍 {flag} {name}\n🔢 `{prefix}`", "en": "⚠️ *Already Exists*\n\n🌍 {flag} {name}\n🔢 `{prefix}`"},
-    "prefix_not_found": {"ar": "❌ *كود غير معروف*\n\n`{prefix}` غير موجود في قاعدة البيانات", "en": "❌ *Unknown Code*\n\n`{prefix}` not found in database"},
+    "prefix_not_found": {"ar": "❌ *كود غير معروف*\n\n`{prefix}` غير موجود", "en": "❌ *Unknown Code*\n\n`{prefix}` not found"},
     "prefix_removed": {"ar": "✅ *تم حذف الدولة*", "en": "✅ *Country Removed*"},
     "admin_panel": {"ar": "*⚙️ لوحة التحكم*", "en": "*⚙️ Admin Panel*"},
     "admin_add_prefix": {"ar": "*➕ أرسل كود الدولة*\nمثال: `22501`", "en": "*➕ Send country code*\nExample: `22501`"},
@@ -208,7 +208,6 @@ class Database:
             return "exists", name, flag
         c.execute("INSERT OR IGNORE INTO active_prefixes VALUES (?)", (prefix,))
         self.conn.commit()
-        logger.info(f"✅ Prefix added: {prefix} -> {flag} {name}")
         return "added", name, flag
 
     def remove_prefix(self, prefix):
@@ -354,10 +353,7 @@ def main_kb(uid):
 
 def countries_menu():
     mk = types.InlineKeyboardMarkup(row_width=2)
-    btns = []
-    for p in db.prefixes():
-        name, flag = db.get_country_info(p)
-        btns.append(types.InlineKeyboardButton(f"{flag} {name}", callback_data=f"get_{p}"))
+    btns = [types.InlineKeyboardButton(f"{db.get_country_info(p)[1]} {db.get_country_info(p)[0]}", callback_data=f"get_{p}") for p in db.prefixes()]
     for i in range(0, len(btns), 2): mk.row(*btns[i:i+2])
     return mk
 
@@ -460,76 +456,75 @@ def menu_back(call):
         except: pass
         show_home(cid, uid)
 
-# ════════════════ المعالج العام (يتحقق من الحالة أولاً) ════════════════
+# ════════════════ المعالج العام الوحيد (يتحقق من الحالة أولاً) ════════════════
 @bot.message_handler(func=lambda m: True)
 def universal_handler(message):
     uid = message.from_user.id
     cid = message.chat.id
     txt = message.text
 
-    # إذا كان المستخدم في حالة معينة، تعامل معها أولاً
+    # --- معالجة الحالات الخاصة للإدارة ---
     state = user_state.get(uid)
-    if state:
-        if state == "add_prefix":
-            prefix = txt.strip()
-            status, name, flag = db.add_prefix(prefix)
-            if status == "added":
-                bot.send_message(cid, t("prefix_added", uid, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
-            elif status == "exists":
-                bot.send_message(cid, t("prefix_exists", uid, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
-            else:
-                bot.send_message(cid, t("prefix_not_found", uid, prefix=prefix), parse_mode="Markdown")
-            user_state.pop(uid, None)
-            return
+    if state == "add_prefix":
+        prefix = txt.strip()
+        status, name, flag = db.add_prefix(prefix)
+        if status == "added":
+            bot.send_message(cid, t("prefix_added", uid, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
+        elif status == "exists":
+            bot.send_message(cid, t("prefix_exists", uid, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
+        else:
+            bot.send_message(cid, t("prefix_not_found", uid, prefix=prefix), parse_mode="Markdown")
+        user_state.pop(uid, None)
+        return
 
-        elif state == "broadcast":
-            users = db.all_users()
-            cnt = 0
-            for u in users:
-                try:
-                    bot.copy_message(u, cid, message.message_id)
-                    cnt += 1
-                    time.sleep(0.03)
-                except: pass
-            bot.send_message(cid, t("admin_broadcast_done", uid, cnt=cnt), parse_mode="Markdown")
-            user_state.pop(uid, None)
-            return
-
-        elif state == "ban":
+    if state == "broadcast":
+        users = db.all_users()
+        cnt = 0
+        for u in users:
             try:
-                target = int(txt)
-                db.conn.cursor().execute("UPDATE users SET is_banned=1 WHERE user_id=?", (target,))
-                db.conn.commit()
-                bot.send_message(cid, t("admin_done", uid), parse_mode="Markdown")
-            except: bot.send_message(cid, "❌ خطأ")
-            user_state.pop(uid, None)
-            return
+                bot.copy_message(u, cid, message.message_id)
+                cnt += 1
+                time.sleep(0.03)
+            except: pass
+        bot.send_message(cid, t("admin_broadcast_done", uid, cnt=cnt), parse_mode="Markdown")
+        user_state.pop(uid, None)
+        return
 
-        elif state == "unban":
-            try:
-                target = int(txt)
-                db.conn.cursor().execute("UPDATE users SET is_banned=0 WHERE user_id=?", (target,))
-                db.conn.commit()
-                bot.send_message(cid, t("admin_done", uid), parse_mode="Markdown")
-            except: bot.send_message(cid, "❌ خطأ")
-            user_state.pop(uid, None)
-            return
-
-        elif state == "add_channel_url":
-            user_state[uid] = ("add_channel_desc", txt.strip())
-            bot.send_message(cid, "أرسل وصفاً للقناة:")
-            return
-
-        elif isinstance(state, tuple) and state[0] == "add_channel_desc":
-            url = state[1]
-            desc = txt.strip()
-            db.conn.cursor().execute("INSERT OR IGNORE INTO force_channels (channel_url, description) VALUES (?,?)", (url, desc))
+    if state == "ban":
+        try:
+            target = int(txt)
+            db.conn.cursor().execute("UPDATE users SET is_banned=1 WHERE user_id=?", (target,))
             db.conn.commit()
-            bot.send_message(cid, "✅ تمت الإضافة")
-            user_state.pop(uid, None)
-            return
+            bot.send_message(cid, t("admin_done", uid), parse_mode="Markdown")
+        except: bot.send_message(cid, "❌ خطأ")
+        user_state.pop(uid, None)
+        return
 
-    # إذا لم يكن في حالة، تعامل مع الأزرار العادية
+    if state == "unban":
+        try:
+            target = int(txt)
+            db.conn.cursor().execute("UPDATE users SET is_banned=0 WHERE user_id=?", (target,))
+            db.conn.commit()
+            bot.send_message(cid, t("admin_done", uid), parse_mode="Markdown")
+        except: bot.send_message(cid, "❌ خطأ")
+        user_state.pop(uid, None)
+        return
+
+    if state == "add_channel_url":
+        user_state[uid] = ("add_channel_desc", txt.strip())
+        bot.send_message(cid, "أرسل وصفاً للقناة:")
+        return
+
+    if isinstance(state, tuple) and state[0] == "add_channel_desc":
+        url = state[1]
+        desc = txt.strip()
+        db.conn.cursor().execute("INSERT OR IGNORE INTO force_channels (channel_url, description) VALUES (?,?)", (url, desc))
+        db.conn.commit()
+        bot.send_message(cid, "✅ تمت الإضافة")
+        user_state.pop(uid, None)
+        return
+
+    # --- الأزرار العادية ---
     if txt == btn("new_num", uid):
         bot.send_message(cid, t("choose_country", uid), parse_mode="Markdown", reply_markup=countries_menu())
     elif txt == btn("countries", uid):
