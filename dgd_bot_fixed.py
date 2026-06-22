@@ -400,7 +400,7 @@ def set_lang(call):
     bot.answer_callback_query(call.id, t("lang_changed", uid))
     try: bot.delete_message(cid, call.message.message_id)
     except: pass
-    bot.send_message(cid, "• • •", reply_markup=main_kb(uid))
+    show_home(cid, uid)
 
 @bot.callback_query_handler(func=lambda c: c.data=="check_sub")
 def check_sub_cb(call):
@@ -418,15 +418,13 @@ def choose_country(call):
     prefix = call.data.split("_")[1]
     release(uid)
     numbers = []
-    errors = []
     for _ in range(3):
         try:
             aid, num = api.get(prefix)
             numbers.append((aid, clean(num)))
-        except Exception as e:
-            errors.append(str(e))
+        except: pass
     if not numbers:
-        bot.answer_callback_query(call.id, f"❌ فشل جلب أرقام: {', '.join(errors[:1])}", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ فشل جلب أرقام", show_alert=True)
         return
     user_data[uid] = {"prefix": prefix, "numbers": numbers}
     mk = types.InlineKeyboardMarkup(row_width=1)
@@ -539,6 +537,7 @@ def handle_buttons(message):
             lines = [t("traffic_title", uid), ""] + [f"{db.get_countries().get(p, (p,'🏳'))[1]} {db.get_countries().get(p, (p,''))[0]}: `{cnt}`" for p, cnt in rows]
             bot.send_message(message.chat.id, "\n".join(lines), parse_mode="Markdown")
     elif txt in [btn("lang", uid)]:
+        # تغيير اللغة مباشرة دون عرض قائمة الاختيار مجدداً
         u = db.get_user(uid)
         current_lang = u[3] if u else "ar"
         new_lang = "en" if current_lang == "ar" else "ar"
