@@ -17,7 +17,7 @@ DELETE_AFTER = 180
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ════════════════ جميع دول العالم (للتعرف التلقائي) ════════════════
+# ════════════════ جميع دول العالم ════════════════
 ALL_COUNTRIES = {
     "1": ("USA", "🇺🇸"), "7": ("Russia", "🇷🇺"), "20": ("Egypt", "🇪🇬"),
     "27": ("South Africa", "🇿🇦"), "30": ("Greece", "🇬🇷"), "31": ("Netherlands", "🇳🇱"),
@@ -170,6 +170,8 @@ class Database:
             description TEXT, enabled INTEGER DEFAULT 1)''')
         c.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
         c.execute('''CREATE TABLE IF NOT EXISTS active_prefixes (prefix TEXT PRIMARY KEY)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS custom_prefixes 
+                     (prefix TEXT PRIMARY KEY, name TEXT, flag TEXT)''')
         c.execute("INSERT OR IGNORE INTO settings VALUES ('maintenance', '0')")
         c.execute("INSERT OR IGNORE INTO settings VALUES ('welcome_photo', '')")
         for p in DEFAULT_PREFIXES:
@@ -188,8 +190,7 @@ class Database:
         return [r[0] for r in self.conn.cursor().execute("SELECT prefix FROM active_prefixes ORDER BY prefix").fetchall()]
 
     def get_country_from_prefix(self, prefix):
-        # إزالة أي علامة + زائدة
-        prefix = prefix.replace("+", "").strip()
+        prefix = re.sub(r'\D', '', prefix)  # إزالة كل الرموز غير الرقمية
         best_code = None
         best_len = 0
         for code in ALL_COUNTRIES:
@@ -201,7 +202,7 @@ class Database:
         return None
 
     def add_prefix(self, prefix):
-        prefix = prefix.replace("+", "").strip()
+        prefix = re.sub(r'\D', '', prefix)
         country = self.get_country_from_prefix(prefix)
         if not country:
             return "not_found", None, None
@@ -213,33 +214,26 @@ class Database:
         self.conn.commit()
         return "added", name, flag
 
-    def add_custom_prefix(self, prefix, name, flag):
-        """إضافة يدوية مع إمكانية تخزين العلم والاسم"""
-        prefix = prefix.replace("+", "").strip()
+    def add_custom_prefix(self, prefix, name, flag=""):
+        prefix = re.sub(r'\D', '', prefix)
         c = self.conn.cursor()
-        c.execute("INSERT OR REPLACE INTO active_prefixes VALUES (?)", (prefix,))
-        # تخزين الاسم والعلم في جدول منفصل إذا أردت، لكن هنا سنكتفي بالـ prefix فقط،
-        # وسنستخدم ALL_COUNTRIES للعرض، أو نضيف جدول مخصص للبيانات المخصصة.
-        # لتجنب التعقيد، سنعتمد على أنه عند الطلب سنبحث في ALL_COUNTRIES، وإلا نعرض الاسم المُدخل.
-        # لذا سنخزن الاسم والعلم في جدول custom_prefixes (سننشئه)
-        c.execute('''CREATE TABLE IF NOT EXISTS custom_prefixes 
-                     (prefix TEXT PRIMARY KEY, name TEXT, flag TEXT)''')
+        c.execute("INSERT OR IGNORE INTO active_prefixes VALUES (?)", (prefix,))
         c.execute("INSERT OR REPLACE INTO custom_prefixes VALUES (?,?,?)", (prefix, name, flag))
         self.conn.commit()
         return "added"
 
     def get_country_info(self, prefix):
-        # أولاً ابحث في ALL_COUNTRIES
+        # أولاً ALL_COUNTRIES
         country = self.get_country_from_prefix(prefix)
         if country:
             return country
-        # ثم ابحث في custom_prefixes
+        # ثم custom_prefixes
         c = self.conn.cursor()
         c.execute("SELECT name, flag FROM custom_prefixes WHERE prefix=?", (prefix,))
         row = c.fetchone()
         if row:
             return (row[0], row[1] if row[1] else "")
-        # إذا لم يوجد، أرجع اسم prefix وعلم فارغ
+        # إذا لم يوجد، أرجع الاسم بدون علم
         return (prefix, "")
 
     def remove_prefix(self, prefix):
@@ -267,7 +261,7 @@ class Database:
 
 db = Database(DB_PATH)
 
-# ════════════════ API xwdsms.org ════════════════
+# ════════════════ API ════════════════
 class API:
     def __init__(self):
         self.s = requests.Session()
@@ -303,7 +297,9 @@ class API:
 api = API()
 
 # ════════════════ دوال مساعدة ════════════════
-def clean(n): return str(n).replace("+", "").strip()
+def clean(n):
+    """إزالة جميع الرموز غير الرقمية من الرقم"""
+    return re.sub(r'\D', '', str(n))
 
 def detect_service(txt):
     t = str(txt).lower()
@@ -381,7 +377,6 @@ def countries_menu():
     btns = []
     for p in db.prefixes():
         name, flag = db.get_country_info(p)
-        # flag قد يكون فارغاً إذا لم يوجد علم
         display = f"{flag} {name}" if flag else name
         btns.append(types.InlineKeyboardButton(display, callback_data=f"get_{p}"))
     for i in range(0, len(btns), 2): mk.row(*btns[i:i+2])
@@ -454,12 +449,15 @@ def get_num(call):
     release(uid)
     try:
         aid, num = api.get(p)
-        num_clean = clean(num)  # إزالة + من الرقم للعرض
+        num_clean = clean(num)  # إزالة جميع الرموز غير الرقمية
         assign(uid, aid, num_clean, p)
         name, flag = db.get_country_info(p)
-        bot.edit_message_text(t("number_assigned", uid, number=num_clean, flag=flag, country=name),
-                              call.message.chat.id, call.message.message_id,
-                              parse_mode="Markdown", reply_markup=num_actions(uid, p, aid))
+        flag_display = f"{flag} " if flag else ""
+        bot.edit_message_text(
+            f"✅ *تم تخصيص رقم*\n\n📞 `{num_clean}`\n🌍 {flag_display}{name}\n⏳ بانتظار الكود...",
+            call.message.chat.id, call.message.message_id,
+            parse_mode="Markdown", reply_markup=num_actions(uid, p, aid)
+        )
     except Exception as e:
         bot.answer_callback_query(call.id, f"❌ {str(e)[:80]}", show_alert=True)
 
@@ -473,9 +471,12 @@ def ch_num(call):
         num_clean = clean(num)
         assign(uid, aid, num_clean, p)
         name, flag = db.get_country_info(p)
-        bot.edit_message_text(t("number_changed", uid, number=num_clean, flag=flag, country=name),
-                              call.message.chat.id, call.message.message_id,
-                              parse_mode="Markdown", reply_markup=num_actions(uid, p, aid))
+        flag_display = f"{flag} " if flag else ""
+        bot.edit_message_text(
+            f"🔄 *تم تغيير الرقم*\n\n📞 `{num_clean}`\n🌍 {flag_display}{name}\n⏳ بانتظار الكود...",
+            call.message.chat.id, call.message.message_id,
+            parse_mode="Markdown", reply_markup=num_actions(uid, p, aid)
+        )
     except Exception as e:
         bot.answer_callback_query(call.id, f"❌ {str(e)[:80]}", show_alert=True)
 
@@ -490,19 +491,19 @@ def menu_back(call):
         except: pass
         show_home(cid, uid)
 
-# ════════════════ handlers الإدارة (باستخدام user_states) ════════════════
+# ════════════════ handlers الإدارة ════════════════
 @bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "add_prefix")
 def add_prefix_handler(message):
-    """إضافة دولة تلقائياً بمجرد كتابة الرمز"""
     uid = message.from_user.id
     prefix = message.text.strip()
     status, name, flag = db.add_prefix(prefix)
     if status == "added":
-        bot.send_message(message.chat.id, t("prefix_added", uid, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
+        flag_display = f"{flag} " if flag else ""
+        bot.send_message(message.chat.id, f"✅ *تمت إضافة الدولة بنجاح*\n\n🌍 {flag_display}{name}\n🔢 `{prefix}`\n\nأصبحت متاحة للمستخدمين الآن", parse_mode="Markdown")
     elif status == "exists":
-        bot.send_message(message.chat.id, t("prefix_exists", uid, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
+        flag_display = f"{flag} " if flag else ""
+        bot.send_message(message.chat.id, f"⚠️ *الدولة موجودة مسبقاً*\n\n🌍 {flag_display}{name}\n🔢 `{prefix}`", parse_mode="Markdown")
     else:
-        # لم يتم التعرف على الدولة – نطلب الاسم وسنبحث عن العلم لاحقاً
         user_states[uid] = ("add_name", prefix)
         bot.send_message(message.chat.id, "لم يتم التعرف على الدولة تلقائياً.\nأرسل اسم الدولة (بالعربية أو الإنجليزية):")
 
@@ -512,21 +513,17 @@ def add_name_handler(message):
     prefix = user_states[uid][1]
     name = message.text.strip()
     
-    # ابحث عن علم مطابق للاسم في ALL_COUNTRIES
+    # ابحث عن علم مطابق
     flag = ""
     for c_name, c_flag in ALL_COUNTRIES.values():
         if name.lower() == c_name.lower():
             flag = c_flag
             break
-    if not flag:
-        # حاول البحث بالاسم الشائع (مصر = Egypt)
-        # يمكن إضافة قاموس ترجمة صغير
-        pass
-
+    
     db.add_custom_prefix(prefix, name, flag)
-    display_flag = flag if flag else ""
+    flag_display = f"{flag} " if flag else ""
     bot.send_message(message.chat.id,
-                     f"✅ *تمت إضافة الدولة بنجاح*\n\n🌍 {display_flag} {name}\n🔢 `{prefix}`\n\nأصبحت متاحة للمستخدمين الآن",
+                     f"✅ *تمت إضافة الدولة بنجاح*\n\n🌍 {flag_display}{name}\n🔢 `{prefix}`\n\nأصبحت متاحة للمستخدمين الآن",
                      parse_mode="Markdown")
     del user_states[uid]
 
@@ -541,7 +538,7 @@ def broadcast_exec(message):
             cnt += 1
             time.sleep(0.03)
         except: pass
-    bot.send_message(message.chat.id, t("admin_broadcast_done", uid, cnt=cnt), parse_mode="Markdown")
+    bot.send_message(message.chat.id, f"✅ *تم الإرسال*\n`{cnt}` مستخدم", parse_mode="Markdown")
     del user_states[uid]
 
 @bot.message_handler(func=lambda m: user_states.get(m.from_user.id) in ["ban", "unban"])
@@ -553,7 +550,7 @@ def ban_unban_exec(message):
         c = db.conn.cursor()
         c.execute(f"UPDATE users SET is_banned={'1' if action=='ban' else '0'} WHERE user_id=?", (target,))
         db.conn.commit()
-        bot.send_message(message.chat.id, t("admin_done", uid), parse_mode="Markdown")
+        bot.send_message(message.chat.id, "✅ *تم*", parse_mode="Markdown")
     except: bot.send_message(message.chat.id, "❌ خطأ")
     del user_states[uid]
 
@@ -621,7 +618,7 @@ def handle_buttons(message):
     elif txt in [btn("admin", uid)] and uid in ADMIN_IDS:
         admin_panel(message)
 
-# ════════════════ لوحة الإدارة (callbacks) ════════════════
+# ════════════════ لوحة الإدارة ════════════════
 def admin_panel(message):
     uid = message.from_user.id
     cid = message.chat.id
