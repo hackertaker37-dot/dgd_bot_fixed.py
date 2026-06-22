@@ -1,11 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
- ╔══════════════════════════════════════════════════╗
- ║           TAKER OTP BOT - Professional          ║
- ║           Developer: @hackerTaker               ║
- ║           API: xwdsms.org                        ║
- ╚══════════════════════════════════════════════════╝
-"""
 import time, requests, json, re, os, sqlite3, threading, logging
 from datetime import datetime
 from telebot import types
@@ -18,7 +11,7 @@ API_KEY = "4886d4297bcfb669bf3b3d2d8d1c4ee2"
 BASE_URL = "http://xwdsms.org"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
-DB_PATH = "taker_pro.db"
+DB_PATH = "taker_bot.db"
 DELETE_AFTER = 180
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -99,36 +92,35 @@ DEFAULT_PREFIXES = [
 # ════════════════ النصوص ════════════════
 T = {
     "lang_select": {"ar": "🌐 *اختر لغتك*\n\nاختر اللغة التي تريد استخدام البوت بها:", "en": "🌐 *Select Your Language*\n\nChoose the language you want to use:"},
-    "lang_set": {"ar": "✅ تم تعيين اللغة العربية", "en": "✅ English language set"},
-    "welcome": {"ar": "🔰 *أهلاً بك في Taker OTP*\n\n• احصل على أرقام وهمية للتفعيل\n• استقبل الأكواد بشكل فوري\n• ادعُ أصدقاءك واربح رصيداً\n\n*اختر الدولة:*", "en": "🔰 *Welcome to Taker OTP*\n\n• Get virtual numbers for activation\n• Receive codes instantly\n• Invite friends and earn credit\n\n*Select country:*"},
+    "welcome": {"ar": "🔰 *أهلاً بك في Taker OTP*\n\n• احصل على أرقام وهمية للتفعيل\n• استقبل الأكواد بشكل فوري\n\n*اختر الدولة:*", "en": "🔰 *Welcome to Taker OTP*\n\n• Get virtual numbers\n• Receive codes instantly\n\n*Select country:*"},
     "choose_country": {"ar": "🌍 *اختر الدولة:*", "en": "🌍 *Select country:*"},
-    "number_assigned": {"ar": "✅ *تم تخصيص رقم جديد*\n\n📞 `{number}`\n🌍 {flag} {country}\n⏳ في انتظار الكود...", "en": "✅ *Number Assigned*\n\n📞 `{number}`\n🌍 {flag} {country}\n⏳ Waiting for code..."},
+    "number_assigned": {"ar": "✅ *تم تخصيص رقم*\n\n📞 `{number}`\n🌍 {flag} {country}\n⏳ في انتظار الكود...", "en": "✅ *Number Assigned*\n\n📞 `{number}`\n🌍 {flag} {country}\n⏳ Waiting for code..."},
     "number_changed": {"ar": "🔄 *تم تغيير الرقم*\n\n📞 `{number}`\n🌍 {flag} {country}\n⏳ في انتظار الكود...", "en": "🔄 *Number Changed*\n\n📞 `{number}`\n🌍 {flag} {country}\n⏳ Waiting for code..."},
-    "maintenance": {"ar": "⚠️ *البوت في وضع الصيانة*\nيرجى المحاولة لاحقاً", "en": "⚠️ *Bot under maintenance*\nPlease try again later"},
-    "subscribe": {"ar": "🔒 *يجب الاشتراك في القنوات أولاً*", "en": "🔒 *You must subscribe to the channels first*"},
-    "stats": {"ar": "📊 *إحصائياتك*\n\n🔷 إجمالي الطلبات: `{req}`\n🔷 الأكواد المستلمة: `{otp}`", "en": "📊 *Your Statistics*\n\n🔷 Total Requests: `{req}`\n🔷 OTPs Received: `{otp}`"},
-    "balance": {"ar": "💰 *رصيدك*\n\n💎 رصيدك: `{bal:.3f} USDT`\n👤 الإحالات: `{ref}`\n🏦 رصيد الموقع: `{site}`\n🏦 الحد الأدنى للسحب: `18.0 USDT`\n\n💡 اربح `0.05 USDT` عن كل صديق", "en": "💰 *Your Balance*\n\n💎 Balance: `{bal:.3f} USDT`\n👤 Referrals: `{ref}`\n🏦 Site Balance: `{site}`\n🏦 Min Withdrawal: `18.0 USDT`\n\n💡 Earn `0.05 USDT` per friend"},
-    "invite": {"ar": "🤝 *دعوة الأصدقاء*\n\n🔗 رابط الدعوة الخاص بك:\n`{link}`\n\n💰 تربح `0.05 USDT` عن كل صديق\n📤 شارك الرابط مع أصدقائك", "en": "🤝 *Invite Friends*\n\n🔗 Your referral link:\n`{link}`\n\n💰 Earn `0.05 USDT` per friend\n📤 Share the link with your friends"},
+    "maintenance": {"ar": "⚠️ *البوت في وضع الصيانة*", "en": "⚠️ *Bot under maintenance*"},
+    "subscribe": {"ar": "🔒 *يجب الاشتراك في القنوات أولاً*", "en": "🔒 *Subscribe to the channels first*"},
+    "stats": {"ar": "📊 *إحصائياتك*\n\n🔷 الطلبات: `{req}`\n🔷 الأكواد: `{otp}`", "en": "📊 *Your Stats*\n\n🔷 Requests: `{req}`\n🔷 OTPs: `{otp}`"},
+    "balance": {"ar": "💰 *رصيدك*\n\n💎 `{bal:.3f} USDT`\n👤 الإحالات: `{ref}`\n🏦 الموقع: `{site}`", "en": "💰 *Balance*\n\n💎 `{bal:.3f} USDT`\n👤 Referrals: `{ref}`\n🏦 Site: `{site}`"},
+    "invite": {"ar": "🤝 *دعوة*\n\n🔗 `{link}`\n\n💰 `0.05 USDT` لكل صديق", "en": "🤝 *Invite*\n\n🔗 `{link}`\n\n💰 `0.05 USDT` per friend"},
     "traffic_title": {"ar": "🟢 *حركة المرور*", "en": "🟢 *Live Traffic*"},
-    "no_active": {"ar": "⚠️ لا توجد أرقام نشطة حالياً", "en": "⚠️ No active numbers at the moment"},
-    "high_traffic": {"ar": "🔥 {flag} {name} | حركة مرور عالية", "en": "🔥 {flag} {name} | High Traffic"},
-    "prefix_added": {"ar": "✅ *تمت إضافة الدولة بنجاح*\n\n🌍 {flag} {name}\n🔢 الكود: `{prefix}`\n\nأصبحت متاحة للمستخدمين الآن", "en": "✅ *Country Added Successfully*\n\n🌍 {flag} {name}\n🔢 Code: `{prefix}`\n\nNow available for users"},
-    "prefix_exists": {"ar": "⚠️ *الدولة موجودة مسبقاً*\n\n🌍 {flag} {name}\n🔢 الكود: `{prefix}`\n\nهذه الدولة موجودة بالفعل في القائمة", "en": "⚠️ *Country Already Exists*\n\n🌍 {flag} {name}\n🔢 Code: `{prefix}`\n\nThis country is already in the list"},
-    "prefix_not_found": {"ar": "❌ *كود الدولة غير معروف*\n\nالكود `{prefix}` غير موجود في قاعدة البيانات العالمية\n\nتأكد من الكود وأعد المحاولة", "en": "❌ *Unknown Country Code*\n\nCode `{prefix}` not found in global database\n\nCheck the code and try again"},
-    "prefix_removed": {"ar": "✅ *تم حذف الدولة بنجاح*", "en": "✅ *Country Removed Successfully*"},
-    "admin_panel": {"ar": "*⚙️ لوحة التحكم*\n\nمرحباً بك في لوحة إدارة البوت", "en": "*⚙️ Admin Panel*\n\nWelcome to the bot control panel"},
-    "admin_add_prefix": {"ar": "*➕ إضافة دولة جديدة*\n\nأرسل كود الدولة فقط\nمثال: `22501`", "en": "*➕ Add New Country*\n\nSend country code only\nExample: `22501`"},
-    "admin_del_prefix": {"ar": "*➖ حذف دولة*\n\nاختر الدولة التي تريد حذفها:", "en": "*➖ Delete Country*\n\nSelect the country to delete:"},
-    "admin_broadcast": {"ar": "*📢 إذاعة*\n\nأرسل الرسالة التي تريد إرسالها لجميع المستخدمين:", "en": "*📢 Broadcast*\n\nSend the message to all users:"},
-    "admin_ban": {"ar": "*🚫 حظر مستخدم*\n\nأرسل ID المستخدم:", "en": "*🚫 Ban User*\n\nSend user ID:"},
-    "admin_unban": {"ar": "*✅ فك حظر*\n\nأرسل ID المستخدم:", "en": "*✅ Unban User*\n\nSend user ID:"},
-    "admin_done": {"ar": "✅ *تم بنجاح*", "en": "✅ *Done Successfully*"},
-    "admin_broadcast_done": {"ar": "✅ *تم الإرسال*\n\nعدد المستلمين: `{cnt}`", "en": "✅ *Sent*\n\nRecipients: `{cnt}`"},
-    "otp_user": {"ar": "*🔐 كود تفعيل جديد*\n\n🌍 الدولة: {name} {flag}\n📱 الرقم: `{number}`\n🔑 الكود: `{code}`\n{icon} التطبيق: {service}\n🏆 المكافأة: 0.0030\n💵 الرصيد: 0.0030", "en": "*🔐 New Activation Code*\n\n🌍 Country: {name} {flag}\n📱 Number: `{number}`\n🔑 Code: `{code}`\n{icon} Service: {service}\n🏆 Reward: 0.0030\n💵 Balance: 0.0030"},
-    "otp_group": {"ar": "*🔐 كود جديد*\n\n🌍 {flag} {name} | {icon} {service}\n📱 `{masked}`\n🔑 `{code}`\n💲 السعر: 0.001$\n\n_⏳ تُحذف تلقائياً بعد 3 دقائق_", "en": "*🔐 New OTP*\n\n🌍 {flag} {name} | {icon} {service}\n📱 `{masked}`\n🔑 `{code}`\n💲 Rate: 0.001$\n\n_⏳ Auto-delete in 3 minutes_"},
+    "no_active": {"ar": "⚠️ لا توجد أرقام نشطة", "en": "⚠️ No active numbers"},
+    "high_traffic": {"ar": "🔥 {flag} {name} | حركة عالية", "en": "🔥 {flag} {name} | High Traffic"},
+    "prefix_added": {"ar": "✅ *تمت إضافة الدولة*\n\n🌍 {flag} {name}\n🔢 `{prefix}`", "en": "✅ *Country Added*\n\n🌍 {flag} {name}\n🔢 `{prefix}`"},
+    "prefix_exists": {"ar": "⚠️ *موجودة مسبقاً*\n\n🌍 {flag} {name}\n🔢 `{prefix}`", "en": "⚠️ *Already Exists*\n\n🌍 {flag} {name}\n🔢 `{prefix}`"},
+    "prefix_not_found": {"ar": "❌ *كود غير معروف*\n\n`{prefix}` غير موجود", "en": "❌ *Unknown Code*\n\n`{prefix}` not found"},
+    "prefix_removed": {"ar": "✅ *تم حذف الدولة*", "en": "✅ *Country Removed*"},
+    "admin_panel": {"ar": "*⚙️ لوحة التحكم*", "en": "*⚙️ Admin Panel*"},
+    "admin_add_prefix": {"ar": "*➕ أرسل كود الدولة فقط*\nمثال: `22501`", "en": "*➕ Send country code only*\nExample: `22501`"},
+    "admin_del_prefix": {"ar": "*اختر الدولة للحذف:*", "en": "*Select country to delete:*"},
+    "admin_broadcast": {"ar": "*📢 أرسل الرسالة:*", "en": "*📢 Send message:*"},
+    "admin_ban": {"ar": "*🚫 أرسل ID المستخدم:*", "en": "*🚫 Send user ID:*"},
+    "admin_unban": {"ar": "*✅ أرسل ID المستخدم:*", "en": "*✅ Send user ID:*"},
+    "admin_done": {"ar": "✅ *تم*", "en": "✅ *Done*"},
+    "admin_broadcast_done": {"ar": "✅ *تم الإرسال*\n`{cnt}` مستخدم", "en": "✅ *Sent*\n`{cnt}` users"},
+    "otp_user": {"ar": "*🔐 كود جديد*\n\n🌍 {name} {flag}\n📱 `{number}`\n🔑 `{code}`\n{icon} {service}", "en": "*🔐 New OTP*\n\n🌍 {name} {flag}\n📱 `{number}`\n🔑 `{code}`\n{icon} {service}"},
+    "otp_group": {"ar": "*🔐 كود جديد*\n\n🌍 {flag} {name} | {icon} {service}\n📱 `{masked}`\n🔑 `{code}`", "en": "*🔐 New OTP*\n\n🌍 {flag} {name} | {icon} {service}\n📱 `{masked}`\n🔑 `{code}`"},
     "countries_list": {"ar": "🌍 *الدول المتاحة:*\n\n", "en": "🌍 *Available Countries:*\n\n"},
-    "check_verified": {"ar": "✅ تم التحقق بنجاح", "en": "✅ Verified Successfully"},
-    "check_failed": {"ar": "❌ لم تشترك بعد", "en": "❌ Not subscribed yet"},
+    "check_verified": {"ar": "✅ تم التحقق", "en": "✅ Verified"},
+    "check_failed": {"ar": "❌ لم تشترك", "en": "❌ Not subscribed"},
 }
 
 def t(key, uid=None, **kw):
@@ -161,87 +153,84 @@ def btn(key, uid):
 class Database:
     def __init__(self, path):
         self.path = path
+        self.conn = sqlite3.connect(path, check_same_thread=False)
         self._init()
 
     def _init(self):
-        with sqlite3.connect(self.path) as c:
-            c.execute('''CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
-                lang TEXT DEFAULT NULL, balance REAL DEFAULT 0,
-                is_banned INTEGER DEFAULT 0, total_requests INTEGER DEFAULT 0,
-                total_otps INTEGER DEFAULT 0)''')
-            c.execute('''CREATE TABLE IF NOT EXISTS active_numbers (
-                alloc_id TEXT PRIMARY KEY, number TEXT, prefix TEXT,
-                assigned_to INTEGER, created_at TEXT, status TEXT DEFAULT 'waiting', otp TEXT)''')
-            c.execute('''CREATE TABLE IF NOT EXISTS otp_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT,
-                otp TEXT, service TEXT, country TEXT, timestamp TEXT)''')
-            c.execute('''CREATE TABLE IF NOT EXISTS referrals (
-                user_id INTEGER PRIMARY KEY, ref_code TEXT UNIQUE, ref_count INTEGER DEFAULT 0)''')
-            c.execute('''CREATE TABLE IF NOT EXISTS force_channels (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, channel_url TEXT UNIQUE,
-                description TEXT, enabled INTEGER DEFAULT 1)''')
-            c.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
-            c.execute('''CREATE TABLE IF NOT EXISTS active_prefixes (
-                prefix TEXT PRIMARY KEY, name TEXT)''')
-            c.execute("INSERT OR IGNORE INTO settings VALUES ('maintenance', '0')")
-            c.execute("INSERT OR IGNORE INTO settings VALUES ('welcome_photo', '')")
-            for p in DEFAULT_PREFIXES:
-                if p in ALL_COUNTRIES:
-                    c.execute("INSERT OR IGNORE INTO active_prefixes VALUES (?,?)", (p, ALL_COUNTRIES[p][0]))
-            c.commit()
+        c = self.conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
+            lang TEXT DEFAULT NULL, balance REAL DEFAULT 0,
+            is_banned INTEGER DEFAULT 0, total_requests INTEGER DEFAULT 0,
+            total_otps INTEGER DEFAULT 0)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS active_numbers (
+            alloc_id TEXT PRIMARY KEY, number TEXT, prefix TEXT,
+            assigned_to INTEGER, created_at TEXT, status TEXT DEFAULT 'waiting', otp TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS otp_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT,
+            otp TEXT, service TEXT, country TEXT, timestamp TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS referrals (
+            user_id INTEGER PRIMARY KEY, ref_code TEXT UNIQUE, ref_count INTEGER DEFAULT 0)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS force_channels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, channel_url TEXT UNIQUE,
+            description TEXT, enabled INTEGER DEFAULT 1)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS active_prefixes (prefix TEXT PRIMARY KEY)''')
+        c.execute("INSERT OR IGNORE INTO settings VALUES ('maintenance', '0')")
+        c.execute("INSERT OR IGNORE INTO settings VALUES ('welcome_photo', '')")
+        for p in DEFAULT_PREFIXES:
+            c.execute("INSERT OR IGNORE INTO active_prefixes VALUES (?)", (p,))
+        self.conn.commit()
 
     def setting(self, key, val=None):
-        with sqlite3.connect(self.path) as c:
-            if val is not None:
-                c.execute("REPLACE INTO settings VALUES (?,?)", (key, val))
-                c.commit()
-                return val
-            r = c.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
-            return r[0] if r else None
+        c = self.conn.cursor()
+        if val is not None:
+            c.execute("REPLACE INTO settings VALUES (?,?)", (key, val))
+            self.conn.commit()
+            return val
+        r = c.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+        return r[0] if r else None
 
     def prefixes(self):
-        with sqlite3.connect(self.path) as c:
-            return {r[0]: r[1] for r in c.execute("SELECT prefix, name FROM active_prefixes").fetchall()}
+        c = self.conn.cursor()
+        return [r[0] for r in c.execute("SELECT prefix FROM active_prefixes ORDER BY prefix").fetchall()]
 
     def add_prefix(self, p):
-        if p in ALL_COUNTRIES:
-            name = ALL_COUNTRIES[p][0]
-            with sqlite3.connect(self.path) as c:
-                # نفحص إذا كانت موجودة مسبقاً
-                exists = c.execute("SELECT 1 FROM active_prefixes WHERE prefix=?", (p,)).fetchone()
-                if exists:
-                    return "exists", name  # موجودة مسبقاً
-                c.execute("INSERT OR REPLACE INTO active_prefixes VALUES (?,?)", (p, name))
-                c.commit()
-            return "added", name  # تمت الإضافة
-        return "not_found", None  # غير موجودة
+        if p not in ALL_COUNTRIES:
+            return "not_found"
+        c = self.conn.cursor()
+        exists = c.execute("SELECT 1 FROM active_prefixes WHERE prefix=?", (p,)).fetchone()
+        if exists:
+            return "exists"
+        c.execute("INSERT OR IGNORE INTO active_prefixes VALUES (?)", (p,))
+        self.conn.commit()
+        return "added"
 
     def remove_prefix(self, p):
-        with sqlite3.connect(self.path) as c:
-            c.execute("DELETE FROM active_prefixes WHERE prefix=?", (p,))
-            c.commit()
+        c = self.conn.cursor()
+        c.execute("DELETE FROM active_prefixes WHERE prefix=?", (p,))
+        self.conn.commit()
 
     def get_user(self, uid):
-        with sqlite3.connect(self.path) as c:
-            return c.execute("SELECT * FROM users WHERE user_id=?", (uid,)).fetchone()
+        c = self.conn.cursor()
+        return c.execute("SELECT * FROM users WHERE user_id=?", (uid,)).fetchone()
 
     def save_user(self, msg):
         uid = msg.from_user.id
-        with sqlite3.connect(self.path) as c:
-            if not c.execute("SELECT 1 FROM users WHERE user_id=?", (uid,)).fetchone():
-                c.execute("INSERT INTO users (user_id, username, first_name) VALUES (?,?,?)",
-                         (uid, msg.from_user.username, msg.from_user.first_name))
-            c.commit()
+        c = self.conn.cursor()
+        if not c.execute("SELECT 1 FROM users WHERE user_id=?", (uid,)).fetchone():
+            c.execute("INSERT INTO users (user_id, username, first_name) VALUES (?,?,?)",
+                     (uid, msg.from_user.username, msg.from_user.first_name))
+            self.conn.commit()
 
     def set_lang(self, uid, lang):
-        with sqlite3.connect(self.path) as c:
-            c.execute("UPDATE users SET lang=? WHERE user_id=?", (lang, uid))
-            c.commit()
+        c = self.conn.cursor()
+        c.execute("UPDATE users SET lang=? WHERE user_id=?", (lang, uid))
+        self.conn.commit()
 
     def all_users(self):
-        with sqlite3.connect(self.path) as c:
-            return [r[0] for r in c.execute("SELECT user_id FROM users WHERE is_banned=0").fetchall()]
+        c = self.conn.cursor()
+        return [r[0] for r in c.execute("SELECT user_id FROM users WHERE is_banned=0").fetchall()]
 
 db = Database(DB_PATH)
 
@@ -284,10 +273,6 @@ api = API()
 def clean(n):
     return str(n).replace("+", "").strip()
 
-def extract_otp(txt):
-    nums = re.findall(r'\d{4,8}', str(txt))
-    return nums[0] if nums else "N/A"
-
 def detect_service(txt):
     t = str(txt).lower()
     for svc, kws in [("WhatsApp",["whatsapp","واتساب"]),("Telegram",["telegram","تيليجرام"]),
@@ -308,26 +293,26 @@ def mask(n):
     return f"{n[:4]}****{n[-3:]}" if len(n) > 7 else n
 
 def release(uid):
-    with sqlite3.connect(DB_PATH) as c:
-        for (aid,) in c.execute("SELECT alloc_id FROM active_numbers WHERE assigned_to=? AND status='waiting'", (uid,)).fetchall():
-            api.delete(aid)
-            c.execute("DELETE FROM active_numbers WHERE alloc_id=?", (aid,))
-        c.commit()
+    c = db.conn.cursor()
+    for (aid,) in c.execute("SELECT alloc_id FROM active_numbers WHERE assigned_to=? AND status='waiting'", (uid,)).fetchall():
+        api.delete(aid)
+        c.execute("DELETE FROM active_numbers WHERE alloc_id=?", (aid,))
+    db.conn.commit()
 
 def assign(uid, aid, num, p):
-    with sqlite3.connect(DB_PATH) as c:
-        c.execute("INSERT INTO active_numbers VALUES (?,?,?,?,?,?,NULL)",
-                 (aid, clean(num), p, uid, datetime.now().isoformat(), 'waiting'))
-        c.execute("UPDATE users SET total_requests=total_requests+1 WHERE user_id=?", (uid,))
-        c.commit()
+    c = db.conn.cursor()
+    c.execute("INSERT INTO active_numbers VALUES (?,?,?,?,?,?,NULL)",
+             (aid, clean(num), p, uid, datetime.now().isoformat(), 'waiting'))
+    c.execute("UPDATE users SET total_requests=total_requests+1 WHERE user_id=?", (uid,))
+    db.conn.commit()
 
 def get_active():
-    with sqlite3.connect(DB_PATH) as c:
-        return c.execute("SELECT alloc_id, number, prefix, assigned_to FROM active_numbers WHERE status='waiting'").fetchall()
+    c = db.conn.cursor()
+    return c.execute("SELECT alloc_id, number, prefix, assigned_to FROM active_numbers WHERE status='waiting'").fetchall()
 
 def check_sub(uid):
-    with sqlite3.connect(DB_PATH) as c:
-        chs = [r[0] for r in c.execute("SELECT channel_url FROM force_channels WHERE enabled=1").fetchall()]
+    c = db.conn.cursor()
+    chs = [r[0] for r in c.execute("SELECT channel_url FROM force_channels WHERE enabled=1").fetchall()]
     if not chs:
         return True
     for url in chs:
@@ -340,8 +325,8 @@ def check_sub(uid):
     return True
 
 def sub_markup(uid):
-    with sqlite3.connect(DB_PATH) as c:
-        chs = c.execute("SELECT channel_url, description FROM force_channels WHERE enabled=1").fetchall()
+    c = db.conn.cursor()
+    chs = c.execute("SELECT channel_url, description FROM force_channels WHERE enabled=1").fetchall()
     if not chs:
         return None
     mk = types.InlineKeyboardMarkup()
@@ -378,7 +363,7 @@ def main_kb(uid):
 def countries_menu():
     mk = types.InlineKeyboardMarkup(row_width=2)
     btns = []
-    for p in sorted(db.prefixes().keys()):
+    for p in db.prefixes():
         n, f = cinfo(p)
         btns.append(types.InlineKeyboardButton(f"{f} {n}", callback_data=f"get_{p}"))
     for i in range(0, len(btns), 2):
@@ -427,12 +412,12 @@ def start(msg):
 
     args = msg.text.split()
     if len(args) > 1 and args[1].startswith("ref"):
-        with sqlite3.connect(DB_PATH) as c:
-            ref = c.execute("SELECT user_id FROM referrals WHERE ref_code=?", (args[1],)).fetchone()
-            if ref:
-                c.execute("UPDATE referrals SET ref_count=ref_count+1 WHERE user_id=?", (ref[0],))
-                c.execute("UPDATE users SET balance=balance+0.05 WHERE user_id=?", (ref[0],))
-            c.commit()
+        c = db.conn.cursor()
+        ref = c.execute("SELECT user_id FROM referrals WHERE ref_code=?", (args[1],)).fetchone()
+        if ref:
+            c.execute("UPDATE referrals SET ref_count=ref_count+1 WHERE user_id=?", (ref[0],))
+            c.execute("UPDATE users SET balance=balance+0.05 WHERE user_id=?", (ref[0],))
+            db.conn.commit()
 
     u = db.get_user(uid)
     if not u or not u[3]:
@@ -527,25 +512,25 @@ def handle_msg(message):
         bot.send_message(cid, t("choose_country", uid), parse_mode="Markdown", reply_markup=countries_menu())
     elif txt == btn("countries", uid):
         pfx = db.prefixes()
-        msg = t("countries_list", uid) + "\n".join(f"{cinfo(p)[1]} {n}" for p, n in sorted(pfx.items()))
+        msg = t("countries_list", uid) + "\n".join(f"{cinfo(p)[1]} {p}" for p in pfx)
         bot.send_message(cid, msg, parse_mode="Markdown")
     elif txt == btn("stats", uid):
         u = db.get_user(uid)
         bot.send_message(cid, t("stats", uid, req=u[6] if u else 0, otp=u[7] if u else 0), parse_mode="Markdown")
     elif txt == btn("balance", uid):
         u = db.get_user(uid)
-        with sqlite3.connect(DB_PATH) as c:
-            ref = c.execute("SELECT ref_count FROM referrals WHERE user_id=?", (uid,)).fetchone()
+        c = db.conn.cursor()
+        ref = c.execute("SELECT ref_count FROM referrals WHERE user_id=?", (uid,)).fetchone()
         bot.send_message(cid, t("balance", uid, bal=u[4] if u else 0, ref=ref[0] if ref else 0, site=api.balance()), parse_mode="Markdown")
     elif txt == btn("invite", uid):
-        with sqlite3.connect(DB_PATH) as c:
-            rc = f"ref{uid}"
-            c.execute("INSERT OR IGNORE INTO referrals VALUES (?,?,0)", (uid, rc))
-            c.commit()
+        c = db.conn.cursor()
+        rc = f"ref{uid}"
+        c.execute("INSERT OR IGNORE INTO referrals VALUES (?,?,0)", (uid, rc))
+        db.conn.commit()
         bot.send_message(cid, t("invite", uid, link=f"https://t.me/Taker_OTP_BOT?start={rc}"), parse_mode="Markdown")
     elif txt == btn("traffic", uid):
-        with sqlite3.connect(DB_PATH) as c:
-            rows = c.execute("SELECT prefix, COUNT(*) FROM active_numbers WHERE status='waiting' GROUP BY prefix ORDER BY COUNT(*) DESC LIMIT 10").fetchall()
+        c = db.conn.cursor()
+        rows = c.execute("SELECT prefix, COUNT(*) FROM active_numbers WHERE status='waiting' GROUP BY prefix ORDER BY COUNT(*) DESC LIMIT 10").fetchall()
         if not rows:
             bot.send_message(cid, t("no_active", uid), parse_mode="Markdown")
         else:
@@ -585,23 +570,30 @@ def tog(call):
 
 @bot.callback_query_handler(func=lambda c: c.data == "addp")
 def addp(call):
-    ustates[call.from_user.id] = "addp"
-    bot.edit_message_text(t("admin_add_prefix", call.from_user.id),
+    uid = call.from_user.id
+    ustates[uid] = "addp"
+    bot.edit_message_text(t("admin_add_prefix", uid),
                           call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda m: ustates.get(m.from_user.id) == "addp")
 def addp_exe(msg):
     uid = msg.from_user.id
     p = msg.text.strip()
-    status, name = db.add_prefix(p)
     
-    if status == "added":
-        _, f = cinfo(p)
-        bot.send_message(msg.chat.id, t("prefix_added", uid, flag=f, name=name, prefix=p), parse_mode="Markdown")
-    elif status == "exists":
-        _, f = cinfo(p)
-        bot.send_message(msg.chat.id, t("prefix_exists", uid, flag=f, name=name, prefix=p), parse_mode="Markdown")
+    logger.info(f"Admin {uid} trying to add prefix: {p}")
+    
+    result = db.add_prefix(p)
+    
+    if result == "added":
+        n, f = cinfo(p)
+        logger.info(f"Prefix {p} added successfully: {f} {n}")
+        bot.send_message(msg.chat.id, t("prefix_added", uid, flag=f, name=n, prefix=p), parse_mode="Markdown")
+    elif result == "exists":
+        n, f = cinfo(p)
+        logger.info(f"Prefix {p} already exists: {f} {n}")
+        bot.send_message(msg.chat.id, t("prefix_exists", uid, flag=f, name=n, prefix=p), parse_mode="Markdown")
     else:
+        logger.info(f"Prefix {p} not found in database")
         bot.send_message(msg.chat.id, t("prefix_not_found", uid, prefix=p), parse_mode="Markdown")
     
     del ustates[uid]
@@ -614,8 +606,8 @@ def delp(call):
         bot.answer_callback_query(call.id, "لا توجد دول", show_alert=True)
         return
     mk = types.InlineKeyboardMarkup()
-    for p, n in sorted(pfx.items()):
-        _, f = cinfo(p)
+    for p in pfx:
+        n, f = cinfo(p)
         mk.add(types.InlineKeyboardButton(f"{f} {n}", callback_data=f"delpp_{p}"))
     mk.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admback"))
     bot.edit_message_text(t("admin_del_prefix", uid), call.message.chat.id, call.message.message_id,
@@ -664,9 +656,9 @@ def ban_unban_exe(msg):
     act = ustates[msg.from_user.id]
     try:
         uid = int(msg.text)
-        with sqlite3.connect(DB_PATH) as c:
-            c.execute(f"UPDATE users SET is_banned={'1' if act=='ban' else '0'} WHERE user_id=?", (uid,))
-            c.commit()
+        c = db.conn.cursor()
+        c.execute(f"UPDATE users SET is_banned={'1' if act=='ban' else '0'} WHERE user_id=?", (uid,))
+        db.conn.commit()
         bot.send_message(msg.chat.id, t("admin_done", msg.from_user.id), parse_mode="Markdown")
     except:
         bot.send_message(msg.chat.id, "❌ خطأ")
@@ -675,8 +667,8 @@ def ban_unban_exe(msg):
 @bot.callback_query_handler(func=lambda c: c.data == "fsub")
 def fsub(call):
     uid = call.from_user.id
-    with sqlite3.connect(DB_PATH) as c:
-        chs = c.execute("SELECT * FROM force_channels WHERE enabled=1").fetchall()
+    c = db.conn.cursor()
+    chs = c.execute("SELECT * FROM force_channels WHERE enabled=1").fetchall()
     mk = types.InlineKeyboardMarkup()
     for ch in chs:
         mk.add(types.InlineKeyboardButton(f"{'✅' if ch[4] else '❌'} {ch[2]}", callback_data=f"edch_{ch[0]}"))
@@ -693,23 +685,23 @@ def addch(call):
 @bot.message_handler(func=lambda m: ustates.get(m.from_user.id) == "addch_url")
 def addch_url(msg):
     ustates[msg.from_user.id] = ("addch_desc", msg.text.strip())
-    bot.send_message(msg.chat.id, "أرسل وصفاً للقناة:")
+    bot.send_message(msg.chat.id, "أرسل وصفاً:")
 
 @bot.message_handler(func=lambda m: isinstance(ustates.get(m.from_user.id), tuple))
 def addch_desc(msg):
     url = ustates[msg.from_user.id][1]
     desc = msg.text.strip()
-    with sqlite3.connect(DB_PATH) as c:
-        c.execute("INSERT OR IGNORE INTO force_channels (channel_url, description) VALUES (?,?)", (url, desc))
-        c.commit()
+    c = db.conn.cursor()
+    c.execute("INSERT OR IGNORE INTO force_channels (channel_url, description) VALUES (?,?)", (url, desc))
+    db.conn.commit()
     bot.send_message(msg.chat.id, "✅ تمت الإضافة")
     del ustates[msg.from_user.id]
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("edch_"))
 def edch(call):
-    with sqlite3.connect(DB_PATH) as c:
-        c.execute("UPDATE force_channels SET enabled=1-enabled WHERE id=?", (int(call.data.split("_")[1]),))
-        c.commit()
+    c = db.conn.cursor()
+    c.execute("UPDATE force_channels SET enabled=1-enabled WHERE id=?", (int(call.data.split("_")[1]),))
+    db.conn.commit()
     fsub(call)
 
 @bot.callback_query_handler(func=lambda c: c.data == "photo")
@@ -725,10 +717,10 @@ def photo_save(msg):
 
 @bot.callback_query_handler(func=lambda c: c.data == "clear")
 def clear(call):
-    with sqlite3.connect(DB_PATH) as c:
-        for t in ["users", "active_numbers", "otp_logs", "referrals"]:
-            c.execute(f"DELETE FROM {t}")
-        c.commit()
+    c = db.conn.cursor()
+    for t in ["users", "active_numbers", "otp_logs", "referrals"]:
+        c.execute(f"DELETE FROM {t}")
+    db.conn.commit()
     bot.answer_callback_query(call.id, "✅ تم مسح البيانات")
     admin_panel(call.message.chat.id, call.from_user.id)
 
@@ -759,21 +751,20 @@ def otp_loop():
                                 threading.Thread(target=delete_later, args=(cid, sent.message_id, DELETE_AFTER), daemon=True).start()
                             except:
                                 pass
-                        with sqlite3.connect(DB_PATH) as c:
-                            c.execute("INSERT INTO otp_logs (number, otp, service, country, timestamp) VALUES (?,?,?,?,?)",
-                                     (num, otp, svc, n, datetime.now().isoformat()))
-                            c.execute("UPDATE active_numbers SET status='success', otp=? WHERE alloc_id=?", (otp, aid))
-                            c.execute("UPDATE users SET total_otps=total_otps+1 WHERE user_id=?", (uid,))
-                            c.commit()
+                        c = db.conn.cursor()
+                        c.execute("INSERT INTO otp_logs (number, otp, service, country, timestamp) VALUES (?,?,?,?,?)",
+                                 (num, otp, svc, n, datetime.now().isoformat()))
+                        c.execute("UPDATE active_numbers SET status='success', otp=? WHERE alloc_id=?", (otp, aid))
+                        c.execute("UPDATE users SET total_otps=total_otps+1 WHERE user_id=?", (uid,))
+                        db.conn.commit()
                         api.delete(aid)
-                        with sqlite3.connect(DB_PATH) as c:
-                            c.execute("DELETE FROM active_numbers WHERE alloc_id=?", (aid,))
-                            c.commit()
+                        c.execute("DELETE FROM active_numbers WHERE alloc_id=?", (aid,))
+                        db.conn.commit()
                     elif st == "expired":
                         api.delete(aid)
-                        with sqlite3.connect(DB_PATH) as c:
-                            c.execute("DELETE FROM active_numbers WHERE alloc_id=?", (aid,))
-                            c.commit()
+                        c = db.conn.cursor()
+                        c.execute("DELETE FROM active_numbers WHERE alloc_id=?", (aid,))
+                        db.conn.commit()
                 except:
                     pass
         except:
@@ -798,5 +789,5 @@ def run_web():
 if __name__ == "__main__":
     threading.Thread(target=run_web, daemon=True).start()
     threading.Thread(target=otp_loop, daemon=True).start()
-    logger.info("✅ Taker OTP Bot Running...")
+    logger.info("✅ Taker OTP Bot Started...")
     bot.infinity_polling()
