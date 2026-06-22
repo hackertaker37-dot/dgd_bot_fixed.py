@@ -1,11 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
- ╔══════════════════════════════════════════════╗
- ║        TAKER OTP BOT - Final Version        ║
- ║        Developer: @hackerTaker              ║
- ║        API: xwdsms.org (Full Integration)    ║
- ╚══════════════════════════════════════════════╝
-"""
 import time, requests, json, re, os, sqlite3, threading, traceback, random, logging
 from datetime import datetime, timedelta
 from telebot import types
@@ -19,9 +12,8 @@ BASE_URL = "http://xwdsms.org"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
 DB_PATH = "taker_final.db"
-DELETE_AFTER = 180  # حذف رسائل الجروب بعد 3 دقائق (بالثواني)
+DELETE_AFTER = 180
 
-# ════════════════ السجل ════════════════
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -85,7 +77,6 @@ COUNTRIES_DB = {
     "998": ("Uzbekistan", "🇺🇿"),
 }
 
-# ════════════════ أيقونات التطبيقات ════════════════
 SERVICE_ICONS = {
     "WhatsApp": "💬", "Telegram": "✈️", "Facebook": "📘", "Instagram": "📷",
     "Google": "🔍", "Twitter/X": "🐦", "Discord": "🎮", "Snapchat": "👻",
@@ -93,13 +84,12 @@ SERVICE_ICONS = {
     "Uber": "🚗", "Netflix": "🎬", "YouTube": "▶️", "OTP": "🔐",
 }
 
-# ════════════════ الدول الافتراضية ════════════════
 DEFAULT_PREFIXES = [
     "22501", "23276", "26134", "44740", "23490", "25471",
     "24910", "49155", "23762", "22178", "22901", "22898",
 ]
 
-# ════════════════ الترجمة الكاملة ════════════════
+# ════════════════ الترجمة ════════════════
 TEXTS = {
     "lang_select": {
         "ar": "🌐 *اختر لغتك*\n\nاختر اللغة التي تريد استخدام البوت بها:",
@@ -471,7 +461,6 @@ def lang_select_markup():
     return mk
 
 def delete_message_later(chat_id, message_id, delay=180):
-    """حذف الرسالة بعد delay ثانية (افتراضي 3 دقائق)"""
     time.sleep(delay)
     try:
         bot.delete_message(chat_id, message_id)
@@ -484,11 +473,19 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 def main_keyboard(uid):
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
-    kb.add(kb("btn_new_number", uid), kb("btn_countries", uid), kb("btn_stats", uid))
-    kb.add(kb("btn_balance", uid), kb("btn_invite", uid), kb("btn_traffic", uid))
-    kb.add(kb("btn_lang", uid))
+    kb.add(
+        types.KeyboardButton(kb("btn_new_number", uid)),
+        types.KeyboardButton(kb("btn_countries", uid)),
+        types.KeyboardButton(kb("btn_stats", uid))
+    )
+    kb.add(
+        types.KeyboardButton(kb("btn_balance", uid)),
+        types.KeyboardButton(kb("btn_invite", uid)),
+        types.KeyboardButton(kb("btn_traffic", uid))
+    )
+    kb.add(types.KeyboardButton(kb("btn_lang", uid)))
     if uid in ADMIN_IDS:
-        kb.add(kb("btn_admin", uid))
+        kb.add(types.KeyboardButton(kb("btn_admin", uid)))
     return kb
 
 def build_countries_menu():
@@ -528,23 +525,13 @@ def start(message):
         bot.send_message(cid, txt, parse_mode="Markdown", reply_markup=lang_select_markup())
         return
 
-    show_main_menu(message, uid, cid)
+    show_main_menu(cid, uid)
 
-def show_main_menu(message, uid, cid):
+def show_main_menu(cid, uid):
+    """عرض القائمة الرئيسية مع جميع الأزرار"""
     if db.setting("maintenance") == "1" and uid not in ADMIN_IDS:
         bot.send_message(cid, t("maintenance", uid), parse_mode="Markdown")
         return
-
-    args = message.text.split() if message.text else []
-    if len(args) > 1 and args[1].startswith("ref"):
-        with sqlite3.connect(DB_PATH) as conn:
-            c = conn.cursor()
-            c.execute("SELECT user_id FROM referrals WHERE ref_code=?", (args[1],))
-            row = c.fetchone()
-            if row:
-                c.execute("UPDATE referrals SET ref_count=ref_count+1 WHERE user_id=?", (row[0],))
-                c.execute("UPDATE users SET balance=balance+0.05 WHERE user_id=?", (row[0],))
-            conn.commit()
 
     if not check_subscription(uid):
         mk = sub_markup(uid)
@@ -562,23 +549,38 @@ def show_main_menu(message, uid, cid):
             bot.send_message(cid, txt, parse_mode="Markdown", reply_markup=mk)
     else:
         bot.send_message(cid, txt, parse_mode="Markdown", reply_markup=mk)
-    bot.send_message(cid, "👇", reply_markup=main_keyboard(uid))
+    
+    # ✅ إرسال الكيبورد السفلي دائماً
+    bot.send_message(cid, "استخدم الأزرار أدناه:", reply_markup=main_keyboard(uid))
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("setlang_"))
 def set_lang(call):
     uid = call.from_user.id
+    cid = call.message.chat.id
     lang = call.data.split("_")[1]
     db.set_lang(uid, lang)
     bot.answer_callback_query(call.id, t(f"lang_set_{lang}", uid))
-    bot.delete_message(call.message.chat.id, call.message.message_id)
-    show_main_menu(call.message, uid, call.message.chat.id)
+    
+    # حذف رسالة اختيار اللغة
+    try:
+        bot.delete_message(cid, call.message.message_id)
+    except:
+        pass
+    
+    # عرض القائمة الرئيسية كاملة مع الكيبورد
+    show_main_menu(cid, uid)
 
 @bot.callback_query_handler(func=lambda c: c.data == "check_sub")
 def check_sub(call):
     uid = call.from_user.id
+    cid = call.message.chat.id
     if check_subscription(uid):
         bot.answer_callback_query(call.id, t("check_verified", uid))
-        show_main_menu(call.message, uid, call.message.chat.id)
+        try:
+            bot.delete_message(cid, call.message.message_id)
+        except:
+            pass
+        show_main_menu(cid, uid)
     else:
         bot.answer_callback_query(call.id, t("check_failed", uid), show_alert=True)
 
@@ -621,21 +623,26 @@ def change_number(call):
 @bot.callback_query_handler(func=lambda c: c.data in ["menu_countries", "menu_main"])
 def menu_back(call):
     uid = call.from_user.id
+    cid = call.message.chat.id
     if call.data == "menu_countries":
         bot.edit_message_text(t("choose_country", uid),
-                              call.message.chat.id, call.message.message_id,
+                              cid, call.message.message_id,
                               parse_mode="Markdown", reply_markup=build_countries_menu())
     else:
-        show_main_menu(call.message, uid, call.message.chat.id)
+        try:
+            bot.delete_message(cid, call.message.message_id)
+        except:
+            pass
+        show_main_menu(cid, uid)
 
 # ════════════════ الكيبورد السفلي ════════════════
 @bot.message_handler(func=lambda m: True)
 def handle_all_messages(message):
     uid = message.from_user.id
     cid = message.chat.id
-
     text = message.text
 
+    # ✅ فحص الأزرار باستخدام دوال الترجمة
     if text == kb("btn_new_number", uid):
         bot.send_message(cid, t("choose_country", uid), parse_mode="Markdown", reply_markup=build_countries_menu())
     elif text == kb("btn_countries", uid):
@@ -684,12 +691,10 @@ def handle_all_messages(message):
     elif text == kb("btn_lang", uid):
         bot.send_message(cid, t("lang_select", uid), parse_mode="Markdown", reply_markup=lang_select_markup())
     elif text == kb("btn_admin", uid) and uid in ADMIN_IDS:
-        admin_panel(message)
+        admin_panel(cid, uid)
 
 # ════════════════ لوحة الإدارة ════════════════
-def admin_panel(message):
-    uid = message.from_user.id
-    cid = message.chat.id
+def admin_panel(cid, uid):
     mk = types.InlineKeyboardMarkup(row_width=2)
     status = t("status_open", uid) if db.setting("maintenance") != "1" else t("status_maint", uid)
     mk.add(types.InlineKeyboardButton(f"الحالة: {status}", callback_data="tog_maint"))
@@ -720,7 +725,7 @@ def tog_maint(call):
     cur = db.setting("maintenance") == "1"
     db.setting("maintenance", "0" if cur else "1")
     bot.answer_callback_query(call.id, t("admin_done", uid))
-    admin_panel(call.message)
+    admin_panel(call.message.chat.id, uid)
 
 @bot.callback_query_handler(func=lambda c: c.data == "add_prefix_btn")
 def add_prefix_btn(call):
@@ -757,7 +762,7 @@ def delp(call):
     prefix = call.data.split("_")[1]
     db.remove_prefix(prefix)
     bot.answer_callback_query(call.id, t("prefix_removed", uid))
-    admin_panel(call.message)
+    admin_panel(call.message.chat.id, uid)
 
 @bot.callback_query_handler(func=lambda c: c.data == "broadcast")
 def broadcast(call):
@@ -871,11 +876,11 @@ def clear_data(call):
             c.execute(f"DELETE FROM {t}")
         conn.commit()
     bot.answer_callback_query(call.id, t("admin_clear_done", uid))
-    admin_panel(call.message)
+    admin_panel(call.message.chat.id, uid)
 
 @bot.callback_query_handler(func=lambda c: c.data == "admin_back")
 def admin_back(call):
-    admin_panel(call.message)
+    admin_panel(call.message.chat.id, call.from_user.id)
 
 # ════════════════ حلقة فحص OTP ════════════════
 def otp_loop():
@@ -903,7 +908,6 @@ def otp_loop():
                                 group_msg = t("otp_group", None, flag=flag, name=name, icon=icon,
                                              service=service, masked=mask_number(number), code=code_parts)
                                 sent = bot.send_message(cid, group_msg, parse_mode="Markdown")
-                                # ✅ حذف تلقائي بعد 3 دقائق
                                 threading.Thread(target=delete_message_later,
                                                args=(cid, sent.message_id, DELETE_AFTER), daemon=True).start()
                             except:
