@@ -370,7 +370,8 @@ def show_home(cid, uid):
         bot.send_message(cid, t("maintenance", uid), parse_mode="Markdown"); return
     if not check_sub(uid):
         mk = sub_markup()
-        if mk: bot.send_message(cid, t("subscribe", uid), parse_mode="Markdown", reply_markup=mk)
+        if mk:
+            bot.send_message(cid, t("subscribe", uid), parse_mode="Markdown", reply_markup=mk)
         return
     photo = db.setting("welcome_photo")
     txt = t("welcome", uid)
@@ -379,6 +380,7 @@ def show_home(cid, uid):
         try: bot.send_photo(cid, photo, caption=txt, parse_mode="Markdown", reply_markup=mk)
         except: bot.send_message(cid, txt, parse_mode="Markdown", reply_markup=mk)
     else: bot.send_message(cid, txt, parse_mode="Markdown", reply_markup=mk)
+    # ضمان ظهور لوحة المفاتيح الرئيسية دائماً
     bot.send_message(cid, "• • •", reply_markup=main_kb(uid))
 
 # ════════════════ أوامر ════════════════
@@ -394,7 +396,8 @@ def start(msg):
             c.execute("UPDATE referrals SET ref_count=ref_count+1 WHERE user_id=?", (ref[0],))
             c.execute("UPDATE users SET balance=balance+0.05 WHERE user_id=?", (ref[0],))
             db.conn.commit()
-    if not db.get_user(uid) or not db.get_user(uid)[3]:
+    u = db.get_user(uid)
+    if not u or not u[3]:
         bot.send_message(cid, t("lang_select", uid), parse_mode="Markdown", reply_markup=lang_markup())
         return
     show_home(cid, uid)
@@ -407,6 +410,7 @@ def set_lang(call):
     bot.answer_callback_query(call.id, t("lang_changed", uid))
     try: bot.delete_message(cid, call.message.message_id)
     except: pass
+    # عرض القائمة الرئيسية فوراً بعد اختيار اللغة
     show_home(cid, uid)
 
 @bot.callback_query_handler(func=lambda c: c.data=="check_sub")
@@ -599,7 +603,7 @@ def universal_handler(message):
         del admin_states[uid]
         return
 
-    # زر تغيير اللغة
+    # زر تغيير اللغة – تحديث الواجهة بالكامل
     if txt in [btn("lang", uid)]:
         current_lang = db.get_user(uid)[3] if db.get_user(uid) else "ar"
         new_lang = "en" if current_lang == "ar" else "ar"
