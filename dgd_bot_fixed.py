@@ -1,23 +1,30 @@
 # -*- coding: utf-8 -*-
+"""
+ ╔══════════════════════════════════════════╗
+ ║       TAKER OTP BOT - Professional      ║
+ ║       Developer: @hackerTaker           ║
+ ║       API: xwdsms.org (Full)            ║
+ ╚══════════════════════════════════════════╝
+"""
 import time, requests, re, os, sqlite3, threading, logging
 from datetime import datetime
 from telebot import types
 import telebot
 from flask import Flask, jsonify
 
-# ════════════════ الإعدادات ════════════════
+# ════════════════ إعدادات ════════════════
 BOT_TOKEN = "8686995713:AAG6fy9oZlGIn8SvnQUY_zMq_Eeo6OJYqRY"
 API_KEY = "4886d4297bcfb669bf3b3d2d8d1c4ee2"
 BASE_URL = "http://xwdsms.org"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
-DB_PATH = "taker_final.db"
+DB_PATH = "taker_pro.db"
 DELETE_AFTER = 180
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ════════════════ جميع دول العالم ════════════════
+# ════════════════ جميع الدول ════════════════
 ALL_COUNTRIES = {
     "1": ("USA", "🇺🇸"), "7": ("Russia", "🇷🇺"), "20": ("Egypt", "🇪🇬"),
     "27": ("South Africa", "🇿🇦"), "30": ("Greece", "🇬🇷"), "31": ("Netherlands", "🇳🇱"),
@@ -89,9 +96,9 @@ DEFAULT_PREFIXES = [
     "24910", "49155", "23762", "22178", "22901", "22898",
 ]
 
-# ════════════════ النصوص ════════════════
+# ════════════════ نصوص ════════════════
 T = {
-    "lang_select": {"ar": "🌐 *اختر لغتك*\n\nاختر اللغة:", "en": "🌐 *Select Language*\n\nChoose language:"},
+    "lang_select": {"ar": "🌐 *اختر لغتك*", "en": "🌐 *Select Language*"},
     "welcome": {"ar": "🔰 *أهلاً بك في Taker OTP*\n\n• أرقام وهمية للتفعيل\n• أكواد فورية\n\n*اختر الدولة:*", "en": "🔰 *Welcome to Taker OTP*\n\n• Virtual numbers\n• Instant codes\n\n*Select country:*"},
     "choose_country": {"ar": "🌍 *اختر الدولة:*", "en": "🌍 *Select country:*"},
     "number_assigned": {"ar": "✅ *تم تخصيص رقم*\n\n📞 `{number}`\n🌍 {flag} {country}\n⏳ بانتظار الكود...", "en": "✅ *Number Assigned*\n\n📞 `{number}`\n🌍 {flag} {country}\n⏳ Waiting for code..."},
@@ -103,13 +110,12 @@ T = {
     "invite": {"ar": "🤝 *دعوة*\n\n🔗 `{link}`\n\n💰 `0.05 USDT` لكل صديق", "en": "🤝 *Invite*\n\n🔗 `{link}`\n\n💰 `0.05 USDT` per friend"},
     "traffic_title": {"ar": "🟢 *حركة المرور*", "en": "🟢 *Live Traffic*"},
     "no_active": {"ar": "⚠️ لا توجد أرقام نشطة", "en": "⚠️ No active numbers"},
-    "high_traffic": {"ar": "🔥 {flag} {name} | حركة عالية", "en": "🔥 {flag} {name} | High Traffic"},
     "prefix_added": {"ar": "✅ *تمت إضافة الدولة*\n\n🌍 {flag} {name}\n🔢 `{prefix}`", "en": "✅ *Country Added*\n\n🌍 {flag} {name}\n🔢 `{prefix}`"},
     "prefix_exists": {"ar": "⚠️ *موجودة مسبقاً*\n\n🌍 {flag} {name}\n🔢 `{prefix}`", "en": "⚠️ *Already Exists*\n\n🌍 {flag} {name}\n🔢 `{prefix}`"},
-    "prefix_not_found": {"ar": "❌ *كود غير معروف*\n\n`{prefix}` غير موجود في قاعدة البيانات", "en": "❌ *Unknown Code*\n\n`{prefix}` not found"},
+    "prefix_not_found": {"ar": "❌ *كود غير معروف*\n\n`{prefix}` غير موجود", "en": "❌ *Unknown Code*\n\n`{prefix}` not found"},
     "prefix_removed": {"ar": "✅ *تم حذف الدولة*", "en": "✅ *Country Removed*"},
     "admin_panel": {"ar": "*⚙️ لوحة التحكم*", "en": "*⚙️ Admin Panel*"},
-    "admin_add_prefix": {"ar": "*➕ أرسل كود الدولة فقط*\nمثال: `22501`", "en": "*➕ Send country code only*\nExample: `22501`"},
+    "admin_add_prefix": {"ar": "*➕ أرسل كود الدولة*\nمثال: `22501`", "en": "*➕ Send country code*\nExample: `22501`"},
     "admin_del_prefix": {"ar": "*اختر الدولة للحذف:*", "en": "*Select country to delete:*"},
     "admin_broadcast": {"ar": "*📢 أرسل الرسالة:*", "en": "*📢 Send message:*"},
     "admin_ban": {"ar": "*🚫 أرسل ID المستخدم:*", "en": "*🚫 Send user ID:*"},
@@ -183,12 +189,10 @@ class Database:
             c.execute("REPLACE INTO settings VALUES (?,?)", (key, val))
             self.conn.commit()
             return val
-        r = c.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
-        return r[0] if r else None
+        return c.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()[0]
 
     def prefixes(self):
-        c = self.conn.cursor()
-        return [r[0] for r in c.execute("SELECT prefix FROM active_prefixes ORDER BY prefix").fetchall()]
+        return [r[0] for r in self.conn.cursor().execute("SELECT prefix FROM active_prefixes ORDER BY prefix").fetchall()]
 
     def add_prefix(self, p):
         if p not in ALL_COUNTRIES:
@@ -303,7 +307,7 @@ def check_sub(uid):
         except: return False
     return True
 
-def sub_markup(uid):
+def sub_markup():
     chs = db.conn.cursor().execute("SELECT channel_url, description FROM force_channels WHERE enabled=1").fetchall()
     if not chs: return None
     mk = types.InlineKeyboardMarkup()
@@ -322,7 +326,7 @@ def delete_later(cid, mid, delay=180):
     try: bot.delete_message(cid, mid)
     except: pass
 
-# ════════════════ بوت تيليجرام ════════════════
+# ════════════════ بوت ════════════════
 bot = telebot.TeleBot(BOT_TOKEN)
 
 def main_kb(uid):
@@ -351,7 +355,7 @@ def show_home(cid, uid):
     if db.setting("maintenance") == "1" and uid not in ADMIN_IDS:
         bot.send_message(cid, t("maintenance", uid), parse_mode="Markdown"); return
     if not check_sub(uid):
-        mk = sub_markup(uid)
+        mk = sub_markup()
         if mk: bot.send_message(cid, t("subscribe", uid), parse_mode="Markdown", reply_markup=mk)
         return
     photo = db.setting("welcome_photo")
@@ -363,7 +367,7 @@ def show_home(cid, uid):
     else: bot.send_message(cid, txt, parse_mode="Markdown", reply_markup=mk)
     bot.send_message(cid, "• • •", reply_markup=main_kb(uid))
 
-# ════════════════ الأوامر ════════════════
+# ════════════════ أوامر ════════════════
 @bot.message_handler(commands=['start'])
 def start(msg):
     uid, cid = msg.from_user.id, msg.chat.id
@@ -438,64 +442,7 @@ def menu_back(call):
         except: pass
         show_home(cid, uid)
 
-# ════════════════ حالات الإدارة (يجب أن تكون قبل العام) ════════════════
-ustates = {}
-
-@bot.message_handler(func=lambda m: ustates.get(m.from_user.id) == "addp")
-def addp_exe(msg):
-    uid, p = msg.from_user.id, msg.text.strip()
-    logger.info(f"Adding prefix: {p}")
-    result = db.add_prefix(p)
-    if result == "added":
-        n, f = cinfo(p)
-        bot.send_message(msg.chat.id, t("prefix_added", uid, flag=f, name=n, prefix=p), parse_mode="Markdown")
-    elif result == "exists":
-        n, f = cinfo(p)
-        bot.send_message(msg.chat.id, t("prefix_exists", uid, flag=f, name=n, prefix=p), parse_mode="Markdown")
-    else:
-        bot.send_message(msg.chat.id, t("prefix_not_found", uid, prefix=p), parse_mode="Markdown")
-    del ustates[uid]
-
-@bot.message_handler(func=lambda m: ustates.get(m.from_user.id) == "bcast")
-def bcast_exe(msg):
-    uid = msg.from_user.id
-    cnt = sum(1 for u in db.all_users() if not (lambda: None) and (bot.copy_message(u, msg.chat.id, msg.message_id) or True))
-    bot.send_message(msg.chat.id, t("admin_broadcast_done", uid, cnt=cnt), parse_mode="Markdown")
-    del ustates[uid]
-
-@bot.message_handler(func=lambda m: ustates.get(m.from_user.id) in ["ban","unban"])
-def ban_unban_exe(msg):
-    act = ustates[msg.from_user.id]
-    try:
-        target = int(msg.text)
-        c = db.conn.cursor()
-        c.execute(f"UPDATE users SET is_banned={'1' if act=='ban' else '0'} WHERE user_id=?", (target,))
-        db.conn.commit()
-        bot.send_message(msg.chat.id, t("admin_done", msg.from_user.id), parse_mode="Markdown")
-    except: bot.send_message(msg.chat.id, "❌ خطأ")
-    del ustates[msg.from_user.id]
-
-@bot.message_handler(func=lambda m: ustates.get(m.from_user.id) == "addch_url")
-def addch_url(msg):
-    ustates[msg.from_user.id] = ("addch_desc", msg.text.strip())
-    bot.send_message(msg.chat.id, "أرسل وصفاً:")
-
-@bot.message_handler(func=lambda m: isinstance(ustates.get(m.from_user.id), tuple))
-def addch_desc(msg):
-    url = ustates[msg.from_user.id][1]
-    desc = msg.text.strip()
-    db.conn.cursor().execute("INSERT OR IGNORE INTO force_channels (channel_url, description) VALUES (?,?)", (url, desc))
-    db.conn.commit()
-    bot.send_message(msg.chat.id, "✅ تمت الإضافة")
-    del ustates[msg.from_user.id]
-
-@bot.message_handler(content_types=['photo'], func=lambda m: ustates.get(m.from_user.id) == "photo")
-def photo_save(msg):
-    db.setting("welcome_photo", msg.photo[-1].file_id)
-    bot.send_message(msg.chat.id, "✅ تم حفظ الصورة")
-    del ustates[msg.from_user.id]
-
-# ════════════════ الكيبورد العام (يأتي أخيراً) ════════════════
+# ════════════════ كيبورد عام ════════════════
 @bot.message_handler(func=lambda m: True)
 def handle_msg(message):
     uid, cid, txt = message.from_user.id, message.chat.id, message.text
@@ -521,8 +468,7 @@ def handle_msg(message):
         bot.send_message(cid, t("invite", uid, link=f"https://t.me/Taker_OTP_BOT?start={rc}"), parse_mode="Markdown")
     elif txt == btn("traffic", uid):
         rows = db.conn.cursor().execute("SELECT prefix, COUNT(*) FROM active_numbers WHERE status='waiting' GROUP BY prefix ORDER BY COUNT(*) DESC LIMIT 10").fetchall()
-        if not rows:
-            bot.send_message(cid, t("no_active", uid), parse_mode="Markdown")
+        if not rows: bot.send_message(cid, t("no_active", uid), parse_mode="Markdown")
         else:
             lines = [t("traffic_title", uid), ""] + [f"{cinfo(p)[1]} {cinfo(p)[0]}: `{cnt}`" for p, cnt in rows]
             bot.send_message(cid, "\n".join(lines), parse_mode="Markdown")
@@ -531,7 +477,7 @@ def handle_msg(message):
     elif txt == btn("admin", uid) and uid in ADMIN_IDS:
         admin_panel(cid, uid)
 
-# ════════════════ لوحة الإدارة (callbacks) ════════════════
+# ════════════════ لوحة الإدارة ════════════════
 def admin_panel(cid, uid):
     mk = types.InlineKeyboardMarkup(row_width=2)
     st = "🟢 مفتوح" if db.setting("maintenance")!="1" else "🔴 صيانة"
@@ -547,11 +493,27 @@ def admin_panel(cid, uid):
     mk.add(types.InlineKeyboardButton("↩️ خروج", callback_data="menu_main"))
     bot.send_message(cid, t("admin_panel", uid), parse_mode="Markdown", reply_markup=mk)
 
+# ════════════════ Callbacks ════════════════
 @bot.callback_query_handler(func=lambda c: c.data=="tog")
 def tog(call): db.setting("maintenance","0" if db.setting("maintenance")=="1" else "1"); bot.answer_callback_query(call.id,"✅"); admin_panel(call.message.chat.id, call.from_user.id)
 
 @bot.callback_query_handler(func=lambda c: c.data=="addp")
-def addp(call): ustates[call.from_user.id]="addp"; bot.edit_message_text(t("admin_add_prefix", call.from_user.id), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+def addp(call):
+    uid = call.from_user.id
+    msg = bot.edit_message_text(t("admin_add_prefix", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_add_prefix)
+
+def process_add_prefix(msg):
+    uid, p = msg.from_user.id, msg.text.strip()
+    result = db.add_prefix(p)
+    if result == "added":
+        n, f = cinfo(p)
+        bot.send_message(msg.chat.id, t("prefix_added", uid, flag=f, name=n, prefix=p), parse_mode="Markdown")
+    elif result == "exists":
+        n, f = cinfo(p)
+        bot.send_message(msg.chat.id, t("prefix_exists", uid, flag=f, name=n, prefix=p), parse_mode="Markdown")
+    else:
+        bot.send_message(msg.chat.id, t("prefix_not_found", uid, prefix=p), parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda c: c.data=="delp")
 def delp(call):
@@ -565,13 +527,52 @@ def delp(call):
 def delpp(call): db.remove_prefix(call.data.split("_")[1]); bot.answer_callback_query(call.id,"✅ تم الحذف"); admin_panel(call.message.chat.id, call.from_user.id)
 
 @bot.callback_query_handler(func=lambda c: c.data=="bcast")
-def bcast(call): ustates[call.from_user.id]="bcast"; bot.edit_message_text(t("admin_broadcast", call.from_user.id), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+def bcast(call):
+    uid = call.from_user.id
+    msg = bot.edit_message_text(t("admin_broadcast", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_broadcast)
+
+def process_broadcast(msg):
+    uid = msg.from_user.id
+    users = db.all_users()
+    cnt = 0
+    for u in users:
+        try:
+            bot.copy_message(u, msg.chat.id, msg.message_id)
+            cnt += 1
+            time.sleep(0.03)
+        except: pass
+    bot.send_message(msg.chat.id, t("admin_broadcast_done", uid, cnt=cnt), parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda c: c.data=="ban")
-def ban_p(call): ustates[call.from_user.id]="ban"; bot.edit_message_text(t("admin_ban", call.from_user.id), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+def ban_p(call):
+    uid = call.from_user.id
+    msg = bot.edit_message_text(t("admin_ban", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_ban)
+
+def process_ban(msg):
+    uid = msg.from_user.id
+    try:
+        target = int(msg.text)
+        db.conn.cursor().execute("UPDATE users SET is_banned=1 WHERE user_id=?", (target,))
+        db.conn.commit()
+        bot.send_message(msg.chat.id, t("admin_done", uid), parse_mode="Markdown")
+    except: bot.send_message(msg.chat.id, "❌ خطأ")
 
 @bot.callback_query_handler(func=lambda c: c.data=="unban")
-def unban_p(call): ustates[call.from_user.id]="unban"; bot.edit_message_text(t("admin_unban", call.from_user.id), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+def unban_p(call):
+    uid = call.from_user.id
+    msg = bot.edit_message_text(t("admin_unban", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_unban)
+
+def process_unban(msg):
+    uid = msg.from_user.id
+    try:
+        target = int(msg.text)
+        db.conn.cursor().execute("UPDATE users SET is_banned=0 WHERE user_id=?", (target,))
+        db.conn.commit()
+        bot.send_message(msg.chat.id, t("admin_done", uid), parse_mode="Markdown")
+    except: bot.send_message(msg.chat.id, "❌ خطأ")
 
 @bot.callback_query_handler(func=lambda c: c.data=="fsub")
 def fsub(call):
@@ -581,13 +582,37 @@ def fsub(call):
     bot.edit_message_text("*🔗 قنوات الاشتراك*", call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=mk)
 
 @bot.callback_query_handler(func=lambda c: c.data=="addch")
-def addch(call): ustates[call.from_user.id]="addch_url"; bot.edit_message_text("*أرسل رابط القناة:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+def addch(call):
+    uid = call.from_user.id
+    msg = bot.edit_message_text("*أرسل رابط القناة:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_addch_url)
+
+def process_addch_url(msg):
+    uid = msg.from_user.id
+    url = msg.text.strip()
+    msg2 = bot.send_message(msg.chat.id, "أرسل وصفاً:")
+    bot.register_next_step_handler(msg2, process_addch_desc, url)
+
+def process_addch_desc(msg, url):
+    desc = msg.text.strip()
+    db.conn.cursor().execute("INSERT OR IGNORE INTO force_channels (channel_url, description) VALUES (?,?)", (url, desc))
+    db.conn.commit()
+    bot.send_message(msg.chat.id, "✅ تمت الإضافة")
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("edch_"))
 def edch(call): db.conn.cursor().execute("UPDATE force_channels SET enabled=1-enabled WHERE id=?", (int(call.data.split("_")[1]),)); db.conn.commit(); fsub(call)
 
 @bot.callback_query_handler(func=lambda c: c.data=="photo")
-def photo(call): ustates[call.from_user.id]="photo"; bot.edit_message_text("*أرسل الصورة:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+def photo(call):
+    uid = call.from_user.id
+    msg = bot.edit_message_text("*أرسل الصورة:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_photo)
+
+@bot.message_handler(content_types=['photo'])
+def process_photo(msg):
+    if not (msg.from_user.id in ADMIN_IDS): return
+    db.setting("welcome_photo", msg.photo[-1].file_id)
+    bot.send_message(msg.chat.id, "✅ تم حفظ الصورة")
 
 @bot.callback_query_handler(func=lambda c: c.data=="clear")
 def clear(call): [db.conn.cursor().execute(f"DELETE FROM {t}") for t in ["users","active_numbers","otp_logs","referrals"]]; db.conn.commit(); bot.answer_callback_query(call.id,"✅ تم مسح البيانات"); admin_panel(call.message.chat.id, call.from_user.id)
@@ -595,7 +620,7 @@ def clear(call): [db.conn.cursor().execute(f"DELETE FROM {t}") for t in ["users"
 @bot.callback_query_handler(func=lambda c: c.data=="admback")
 def admback(call): admin_panel(call.message.chat.id, call.from_user.id)
 
-# ════════════════ حلقة فحص OTP ════════════════
+# ════════════════ OTP Loop ════════════════
 def otp_loop():
     while True:
         try:
