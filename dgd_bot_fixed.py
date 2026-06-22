@@ -537,7 +537,7 @@ def handle_buttons(message):
             lines = [t("traffic_title", uid), ""] + [f"{db.get_countries().get(p, (p,'🏳'))[1]} {db.get_countries().get(p, (p,''))[0]}: `{cnt}`" for p, cnt in rows]
             bot.send_message(message.chat.id, "\n".join(lines), parse_mode="Markdown")
     elif txt in [btn("lang", uid)]:
-        # تغيير اللغة مباشرة دون عرض قائمة الاختيار مجدداً
+        # تغيير اللغة مباشرة مع تحديث الكيبورد فقط
         u = db.get_user(uid)
         current_lang = u[3] if u else "ar"
         new_lang = "en" if current_lang == "ar" else "ar"
