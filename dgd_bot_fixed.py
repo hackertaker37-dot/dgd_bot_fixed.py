@@ -9,10 +9,10 @@ from flask import Flask, jsonify
 BOT_TOKEN = "8686995713:AAFcYLSqdXl6O3x_PVvhkT8WOdJA_MQKHAE"
 API_KEY = "4886d4297bcfb669bf3b3d2d8d1c4ee2"
 BASE_URL = "http://xwdsms.org"
-CHAT_IDS = ["-1003789271722"]
-ADMIN_IDS = [8728019066, 8972941677]
+CHAT_IDS = ["-1003789271722"]               # جروب استقبال الأكواد
+ADMIN_IDS = [8728019066, 8972941677]       # أنت والإدمن الثاني
 DB_PATH = "taker_pro.db"
-DELETE_AFTER = 180  # حذف رسائل الجروب بعد 3 دقائق
+DELETE_AFTER = 180                         # حذف رسائل الجروب بعد 3 دقائق
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -89,7 +89,7 @@ DEFAULT_PREFIXES = [
     "24910", "49155", "23762", "22178", "22901", "22898",
 ]
 
-# ════════════════ نصوص البوت (عربي فقط) ════════════════
+# ════════════════ النصوص العربية ════════════════
 T = {
     "welcome": "🔰 *أهلاً بك في Taker OTP*\n\n• أرقام وهمية للتفعيل\n• أكواد فورية\n\n*اختر الدولة:*",
     "choose_country": "🌍 *اختر الدولة:*",
@@ -97,7 +97,6 @@ T = {
     "number_assigned": "✅ *تم تخصيص رقم*\n\n📞 `+{number}`\n🌍 {flag} {country}\n⏳ بانتظار الكود...",
     "number_changed": "🔄 *تم تغيير الرقم*\n\n📞 `+{number}`\n🌍 {flag} {country}\n⏳ بانتظار الكود...",
     "maintenance": "⚠️ *البوت في الصيانة*",
-    "subscribe": "🔒 *اشترك في القنوات أولاً*",
     "stats": "📊 *إحصائياتك*\n\n🔷 الطلبات: `{req}`\n🔷 الأكواد: `{otp}`",
     "balance": "💰 *رصيدك*\n\n💎 `{bal:.3f} USDT`\n👤 الإحالات: `{ref}`\n🏦 الموقع: `{site}`",
     "invite": "🤝 *دعوة*\n\n🔗 `{link}`\n\n💰 `0.05 USDT` لكل صديق",
@@ -330,7 +329,7 @@ def show_home(cid, uid):
         bot.send_message(cid, T["maintenance"], parse_mode="Markdown"); return
     if not check_sub(uid):
         mk = sub_markup()
-        if mk: bot.send_message(cid, T["subscribe"], parse_mode="Markdown", reply_markup=mk)
+        if mk: bot.send_message(cid, "🔒 *اشترك في القنوات أولاً*", parse_mode="Markdown", reply_markup=mk)
         return
     photo = db.setting("welcome_photo")
     txt = T["welcome"]
@@ -517,7 +516,7 @@ def universal_handler(message):
             target = int(txt)
             u = db.get_user(target)
             if u:
-                info = f"👤 *معلومات المستخدم*\n🆔: `{u[0]}`\n👤: @{u[1] or '—'}\n📞: `{u[5] if len(u)>5 else '—'}`\n🚫: {'محظور' if u[2] else 'نشط'}"
+                info = f"👤 *معلومات المستخدم*\n🆔: `{u[0]}`\n👤: @{u[1] or '—'}\n🚫: {'محظور' if u[2] else 'نشط'}"
                 bot.send_message(cid, info, parse_mode="Markdown")
             else: bot.send_message(cid, "❌ غير موجود")
         except: bot.send_message(cid, "❌ خطأ")
