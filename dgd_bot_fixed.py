@@ -502,57 +502,106 @@ def menu_back(call):
         except: pass
         show_home(cid, uid)
 
-# ════════════════ الكيبورد السفلي ════════════════
-@bot.message_handler(func=lambda m: m.text in [
-    "📱 رقم جديد", "📱 New Number", "🌍 الدول", "🌍 Countries",
-    "📊 إحصائياتي", "📊 My Stats", "💰 رصيدي", "💰 Balance",
-    "🤝 دعوة", "🤝 Invite", "🟢 المرور", "🟢 Traffic",
-    "🌐 اللغة", "🌐 Language"
-])
-def handle_buttons(message):
+# ════════════════ المعالج الرئيسي للرسائل ════════════════
+@bot.message_handler(func=lambda m: True)
+def universal_handler(message):
     uid = message.from_user.id
+    cid = message.chat.id
     txt = message.text
 
-    # زر تغيير اللغة – يعيد تحميل القائمة الرئيسية بالكامل
+    # التحقق من حالات الإدارة أولاً
+    state = admin_states.get(uid)
+    if state == "add_prefix":
+        prefix = txt.strip()
+        status, name, flag = db.add_country(prefix)
+        if status == "added":
+            bot.send_message(cid, t("prefix_added", uid, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
+        elif status == "exists":
+            name, flag = ALL_COUNTRIES.get(prefix, (prefix, "🏳"))
+            bot.send_message(cid, t("prefix_exists", uid, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
+        else:
+            admin_states[uid] = ("add_name", prefix)
+            bot.send_message(cid, t("prefix_unknown", uid), parse_mode="Markdown")
+            return
+        del admin_states[uid]
+        return
+
+    if state == "broadcast":
+        users = db.all_users()
+        cnt = 0
+        for u in users:
+            try:
+                bot.copy_message(u, cid, message.message_id)
+                cnt += 1
+                time.sleep(0.03)
+            except: pass
+        bot.send_message(cid, t("admin_broadcast_done", uid, cnt=cnt), parse_mode="Markdown")
+        del admin_states[uid]
+        return
+
+    if state in ["ban", "unban"]:
+        try:
+            target = int(txt)
+            db.conn.cursor().execute(f"UPDATE users SET is_banned={'1' if state=='ban' else '0'} WHERE user_id=?", (target,))
+            db.conn.commit()
+            bot.send_message(cid, t("admin_done", uid), parse_mode="Markdown")
+        except: bot.send_message(cid, "❌ خطأ")
+        del admin_states[uid]
+        return
+
+    if state == "addch_url":
+        admin_states[uid] = ("addch_desc", txt.strip())
+        bot.send_message(cid, "أرسل وصفاً:")
+        return
+
+    if isinstance(state, tuple) and state[0] == "addch_desc":
+        url = state[1]
+        desc = txt.strip()
+        db.conn.cursor().execute("INSERT OR IGNORE INTO force_channels (channel_url, description) VALUES (?,?)", (url, desc))
+        db.conn.commit()
+        bot.send_message(cid, "✅ تمت")
+        del admin_states[uid]
+        return
+
+    # زر تغيير اللغة (أولوية عالية)
     if txt in ["🌐 اللغة", "🌐 Language"]:
-        u = db.get_user(uid)
-        current_lang = u[3] if u else "ar"
+        current_lang = db.get_user(uid)[3] if db.get_user(uid) else "ar"
         new_lang = "en" if current_lang == "ar" else "ar"
         db.set_lang(uid, new_lang)
-        bot.send_message(message.chat.id, t("lang_changed", uid), parse_mode="Markdown")
-        show_home(message.chat.id, uid)
+        bot.send_message(cid, t("lang_changed", uid), parse_mode="Markdown")
+        show_home(cid, uid)
         return
 
     # باقي الأزرار
-    if txt in [btn("new_num", uid)]:
-        bot.send_message(message.chat.id, t("choose_country", uid), parse_mode="Markdown", reply_markup=countries_menu())
-    elif txt in [btn("countries", uid)]:
+    if txt == btn("new_num", uid):
+        bot.send_message(cid, t("choose_country", uid), parse_mode="Markdown", reply_markup=countries_menu())
+    elif txt == btn("countries", uid):
         countries = db.get_countries()
         msg = t("countries_list", uid) + "\n".join(f"{flag} {name}" for _, (name, flag) in sorted(countries.items()))
-        bot.send_message(message.chat.id, msg, parse_mode="Markdown")
-    elif txt in [btn("stats", uid)]:
+        bot.send_message(cid, msg, parse_mode="Markdown")
+    elif txt == btn("stats", uid):
         u = db.get_user(uid)
-        bot.send_message(message.chat.id, t("stats", uid, req=u[6] if u else 0, otp=u[7] if u else 0), parse_mode="Markdown")
-    elif txt in [btn("balance", uid)]:
+        bot.send_message(cid, t("stats", uid, req=u[6] if u else 0, otp=u[7] if u else 0), parse_mode="Markdown")
+    elif txt == btn("balance", uid):
         u = db.get_user(uid)
         ref = db.conn.cursor().execute("SELECT ref_count FROM referrals WHERE user_id=?", (uid,)).fetchone()
-        bot.send_message(message.chat.id, t("balance", uid, bal=u[4] if u else 0, ref=ref[0] if ref else 0, site=api.balance()), parse_mode="Markdown")
-    elif txt in [btn("invite", uid)]:
+        bot.send_message(cid, t("balance", uid, bal=u[4] if u else 0, ref=ref[0] if ref else 0, site=api.balance()), parse_mode="Markdown")
+    elif txt == btn("invite", uid):
         rc = f"ref{uid}"
         db.conn.cursor().execute("INSERT OR IGNORE INTO referrals VALUES (?,?,0)", (uid, rc))
         db.conn.commit()
-        bot.send_message(message.chat.id, t("invite", uid, link=f"https://t.me/Taker_OTP_BOT?start={rc}"), parse_mode="Markdown")
-    elif txt in [btn("traffic", uid)]:
+        bot.send_message(cid, t("invite", uid, link=f"https://t.me/Taker_OTP_BOT?start={rc}"), parse_mode="Markdown")
+    elif txt == btn("traffic", uid):
         rows = db.conn.cursor().execute("SELECT prefix, COUNT(*) FROM active_numbers WHERE status='waiting' GROUP BY prefix ORDER BY COUNT(*) DESC LIMIT 10").fetchall()
-        if not rows: bot.send_message(message.chat.id, t("no_active", uid), parse_mode="Markdown")
+        if not rows: bot.send_message(cid, t("no_active", uid), parse_mode="Markdown")
         else:
             lines = [t("traffic_title", uid), ""] + [f"{db.get_countries().get(p, (p,'🏳'))[1]} {db.get_countries().get(p, (p,''))[0]}: `{cnt}`" for p, cnt in rows]
-            bot.send_message(message.chat.id, "\n".join(lines), parse_mode="Markdown")
+            bot.send_message(cid, "\n".join(lines), parse_mode="Markdown")
+    elif txt == btn("admin", uid) and uid in ADMIN_IDS:
+        admin_panel(cid, uid)
 
-# ════════════════ لوحة الإدارة الكاملة ════════════════
-@bot.message_handler(func=lambda m: m.text in ["⚙️ الإدارة", "⚙️ Admin"] and m.from_user.id in ADMIN_IDS)
-def admin_panel(message):
-    uid = message.from_user.id
+# ════════════════ لوحة الإدارة ════════════════
+def admin_panel(cid, uid):
     mk = types.InlineKeyboardMarkup(row_width=2)
     st = "🟢 مفتوح" if db.setting("maintenance")!="1" else "🔴 صيانة"
     mk.add(types.InlineKeyboardButton(f"الحالة: {st}", callback_data="tog"))
@@ -568,42 +617,17 @@ def admin_panel(message):
            types.InlineKeyboardButton("🖼️ صورة", callback_data="set_photo"))
     mk.add(types.InlineKeyboardButton("🗑️ مسح", callback_data="clear_data"),
            types.InlineKeyboardButton("↩️ خروج", callback_data="menu_main"))
-    bot.send_message(message.chat.id, t("admin_panel", uid), parse_mode="Markdown", reply_markup=mk)
+    bot.send_message(cid, t("admin_panel", uid), parse_mode="Markdown", reply_markup=mk)
 
 admin_states = {}
 
 @bot.callback_query_handler(func=lambda c: c.data=="tog")
-def tog(call): db.setting("maintenance","0" if db.setting("maintenance")=="1" else "1"); bot.answer_callback_query(call.id,"✅"); admin_panel(call.message)
+def tog(call): db.setting("maintenance","0" if db.setting("maintenance")=="1" else "1"); bot.answer_callback_query(call.id,"✅"); admin_panel(call.message.chat.id, call.from_user.id)
 
 @bot.callback_query_handler(func=lambda c: c.data=="add_country")
 def add_country(call):
     admin_states[call.from_user.id] = "add_prefix"
     bot.edit_message_text(t("admin_add_prefix", call.from_user.id), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-
-@bot.message_handler(func=lambda m: admin_states.get(m.from_user.id) == "add_prefix")
-def add_prefix_exec(message):
-    uid = message.from_user.id
-    prefix = message.text.strip()
-    status, name, flag = db.add_country(prefix)
-    if status == "added":
-        bot.send_message(message.chat.id, t("prefix_added", uid, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
-        del admin_states[uid]
-    elif status == "exists":
-        name, flag = ALL_COUNTRIES.get(prefix, (prefix, "🏳"))
-        bot.send_message(message.chat.id, t("prefix_exists", uid, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
-        del admin_states[uid]
-    else:
-        admin_states[uid] = ("add_name", prefix)
-        bot.send_message(message.chat.id, t("prefix_unknown", uid), parse_mode="Markdown")
-
-@bot.message_handler(func=lambda m: isinstance(admin_states.get(m.from_user.id), tuple) and admin_states[m.from_user.id][0] == "add_name")
-def add_name_exec(message):
-    uid = message.from_user.id
-    prefix = admin_states[uid][1]
-    name = message.text.strip()
-    db.add_country(prefix, name)
-    bot.send_message(message.chat.id, f"✅ تمت إضافة {name}")
-    del admin_states[uid]
 
 @bot.callback_query_handler(func=lambda c: c.data=="del_country")
 def del_country(call):
@@ -620,26 +644,12 @@ def del_country(call):
 def delc(call):
     db.delete_country(call.data.split("_")[1])
     bot.answer_callback_query(call.id, "✅ تم الحذف")
-    admin_panel(call.message)
+    admin_panel(call.message.chat.id, call.from_user.id)
 
 @bot.callback_query_handler(func=lambda c: c.data=="broadcast")
 def broadcast(call):
     admin_states[call.from_user.id] = "broadcast"
     bot.edit_message_text(t("admin_broadcast", call.from_user.id), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-
-@bot.message_handler(func=lambda m: admin_states.get(m.from_user.id) == "broadcast")
-def broadcast_exec(message):
-    uid = message.from_user.id
-    users = db.all_users()
-    cnt = 0
-    for u in users:
-        try:
-            bot.copy_message(u, message.chat.id, message.message_id)
-            cnt += 1
-            time.sleep(0.03)
-        except: pass
-    bot.send_message(message.chat.id, t("admin_broadcast_done", uid, cnt=cnt), parse_mode="Markdown")
-    del admin_states[uid]
 
 @bot.callback_query_handler(func=lambda c: c.data=="stats_btn")
 def stats_btn(call):
@@ -674,18 +684,6 @@ def ban_unban_prompt(call):
     txt = t("admin_ban", call.from_user.id) if call.data=="ban" else t("admin_unban", call.from_user.id)
     bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda m: admin_states.get(m.from_user.id) in ["ban","unban"])
-def ban_unban_exec(message):
-    uid = message.from_user.id
-    action = admin_states[uid]
-    try:
-        target = int(message.text)
-        db.conn.cursor().execute(f"UPDATE users SET is_banned={'1' if action=='ban' else '0'} WHERE user_id=?", (target,))
-        db.conn.commit()
-        bot.send_message(message.chat.id, t("admin_done", uid), parse_mode="Markdown")
-    except: bot.send_message(message.chat.id, "❌ خطأ")
-    del admin_states[uid]
-
 @bot.callback_query_handler(func=lambda c: c.data=="users_list")
 def users_list(call):
     users = db.conn.cursor().execute("SELECT user_id, username FROM users ORDER BY user_id DESC LIMIT 15").fetchall()
@@ -704,20 +702,6 @@ def force_sub(call):
 def addch(call):
     admin_states[call.from_user.id] = "addch_url"
     bot.edit_message_text("*أرسل رابط القناة:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-
-@bot.message_handler(func=lambda m: admin_states.get(m.from_user.id) == "addch_url")
-def addch_url(message):
-    admin_states[message.from_user.id] = ("addch_desc", message.text.strip())
-    bot.send_message(message.chat.id, "أرسل وصفاً:")
-
-@bot.message_handler(func=lambda m: isinstance(admin_states.get(m.from_user.id), tuple) and admin_states[m.from_user.id][0] == "addch_desc")
-def addch_desc(message):
-    url = admin_states[message.from_user.id][1]
-    desc = message.text.strip()
-    db.conn.cursor().execute("INSERT OR IGNORE INTO force_channels (channel_url, description) VALUES (?,?)", (url, desc))
-    db.conn.commit()
-    bot.send_message(message.chat.id, "✅ تمت")
-    del admin_states[message.from_user.id]
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("edch_"))
 def edch(call):
@@ -742,10 +726,10 @@ def clear_data(call):
         db.conn.cursor().execute(f"DELETE FROM {t}")
     db.conn.commit()
     bot.answer_callback_query(call.id, "✅ تم مسح البيانات")
-    admin_panel(call.message)
+    admin_panel(call.message.chat.id, call.from_user.id)
 
 @bot.callback_query_handler(func=lambda c: c.data=="admin_back")
-def admin_back(call): admin_panel(call.message)
+def admin_back(call): admin_panel(call.message.chat.id, call.from_user.id)
 
 # ════════════════ حلقة فحص OTP ════════════════
 def otp_loop():
