@@ -91,10 +91,11 @@ DEFAULT_PREFIXES = [
 
 # ════════════════ نصوص الترجمة ════════════════
 TEXTS = {
-    "lang_select": {"ar": "🌐 *اختر لغتك*", "en": "🌐 *Select Language*"},
+    "lang_select": {"ar": "🌐 *اختر لغتك*\n\nاختر اللغة التي تريد استخدام البوت بها:", "en": "🌐 *Select Your Language*\n\nChoose the language you want to use:"},
     "lang_changed": {"ar": "✅ تم تغيير اللغة إلى العربية", "en": "✅ Language changed to English"},
     "welcome": {"ar": "🔰 *أهلاً بك في Taker OTP*\n\n• أرقام وهمية للتفعيل\n• أكواد فورية\n\n*اختر الدولة:*", "en": "🔰 *Welcome to Taker OTP*\n\n• Virtual numbers\n• Instant codes\n\n*Select country:*"},
     "choose_country": {"ar": "🌍 *اختر الدولة:*", "en": "🌍 *Select country:*"},
+    "choose_number": {"ar": "*اختر رقماً من القائمة:*", "en": "*Choose a number:*"},
     "number_assigned": {"ar": "✅ *تم تخصيص رقم*\n\n📞 `+{number}`\n🌍 {flag} {country}\n⏳ بانتظار الكود...", "en": "✅ *Number Assigned*\n\n📞 `+{number}`\n🌍 {flag} {country}\n⏳ Waiting for code..."},
     "number_changed": {"ar": "🔄 *تم تغيير الرقم*\n\n📞 `+{number}`\n🌍 {flag} {country}\n⏳ بانتظار الكود...", "en": "🔄 *Number Changed*\n\n📞 `+{number}`\n🌍 {flag} {country}\n⏳ Waiting for code..."},
     "maintenance": {"ar": "⚠️ *البوت في الصيانة*", "en": "⚠️ *Bot under maintenance*"},
@@ -345,10 +346,10 @@ def main_kb(uid):
     return kb
 
 def countries_menu():
-    """قائمة الدول بشكل 3 أعمدة احترافية (بدون صفحات)"""
+    """قائمة الدول بشكل 3 أعمدة احترافية"""
     countries = sorted(db.get_countries().items())
     mk = types.InlineKeyboardMarkup(row_width=3)
-    btns = [types.InlineKeyboardButton(f"{flag} {prefix}", callback_data=f"get_{prefix}") for prefix, (name, flag) in countries]
+    btns = [types.InlineKeyboardButton(f"{flag} {prefix}", callback_data=f"choose_{prefix}") for prefix, (name, flag) in countries]
     for i in range(0, len(btns), 3):
         mk.row(*btns[i:i+3])
     mk.row(types.InlineKeyboardButton("↩️ رجوع", callback_data="menu_main"))
@@ -417,32 +418,96 @@ def check_sub_cb(call):
         show_home(cid, uid)
     else: bot.answer_callback_query(call.id, "❌ لم تشترك", show_alert=True)
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("get_"))
-def get_num(call):
-    uid, p = call.from_user.id, call.data.split("_")[1]
+# الخطوة الأولى: يختار المستخدم الدولة -> نرسل له 3 أرقام للاختيار
+@bot.callback_query_handler(func=lambda c: c.data.startswith("choose_"))
+def choose_country(call):
+    uid = call.from_user.id
+    prefix = call.data.split("_")[1]
     release(uid)
-    try:
-        aid, num = api.get(p); num = clean(num); assign(uid, aid, num, p)
-        name, flag = db.get_countries().get(p, (p, "🏳"))
-        bot.edit_message_text(t("number_assigned", uid, number=num, flag=flag, country=name),
-                              call.message.chat.id, call.message.message_id,
-                              parse_mode="Markdown", reply_markup=num_actions(uid, p, aid))
-    except Exception as e:
-        bot.answer_callback_query(call.id, f"❌ {str(e)[:80]}", show_alert=True)
+    # جلب 3 أرقام من API
+    numbers = []
+    errors = []
+    for _ in range(3):
+        try:
+            aid, num = api.get(prefix)
+            numbers.append((aid, clean(num)))
+        except Exception as e:
+            errors.append(str(e))
+    if not numbers:
+        bot.answer_callback_query(call.id, f"❌ فشل جلب أرقام: {', '.join(errors[:1])}", show_alert=True)
+        return
+    # تخزين مؤقت للأرقام في قاعدة بيانات أو session (سنستخدم كائن بسيط)
+    # سنستخدم user_data لتخزين الأرقام المقترحة
+    user_data[uid] = {"prefix": prefix, "numbers": numbers}
+    mk = types.InlineKeyboardMarkup(row_width=1)
+    for i, (aid, num) in enumerate(numbers[:3]):
+        mk.add(types.InlineKeyboardButton(f"{i+1}. +{num}", callback_data=f"pick_{i}"))
+    mk.add(types.InlineKeyboardButton("🔄 جلب غيرها", callback_data=f"choose_{prefix}"))
+    mk.add(types.InlineKeyboardButton("↩️ رجوع", callback_data="menu_countries"))
+    name, flag = db.get_countries().get(prefix, (prefix, "🏳"))
+    bot.edit_message_text(
+        f"{t('choose_number', uid)}\n\n🌍 {flag} {name}",
+        call.message.chat.id, call.message.message_id,
+        parse_mode="Markdown", reply_markup=mk
+    )
+
+# بيانات مؤقتة للمستخدمين (للأرقام المقترحة)
+user_data = {}
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("pick_"))
+def pick_number(call):
+    uid = call.from_user.id
+    if uid not in user_data:
+        bot.answer_callback_query(call.id, "انتهت الجلسة", show_alert=True)
+        return
+    idx = int(call.data.split("_")[1])
+    numbers = user_data[uid].get("numbers", [])
+    prefix = user_data[uid].get("prefix")
+    if idx >= len(numbers):
+        bot.answer_callback_query(call.id, "رقم غير صالح")
+        return
+    aid, num = numbers[idx]
+    # حذف الأرقام الأخرى من API (التي لم تختر)
+    for i, (a, n) in enumerate(numbers):
+        if i != idx:
+            api.delete(a)
+    # تعيين الرقم المختار
+    assign(uid, aid, num, prefix)
+    name, flag = db.get_countries().get(prefix, (prefix, "🏳"))
+    bot.edit_message_text(t("number_assigned", uid, number=num, flag=flag, country=name),
+                          call.message.chat.id, call.message.message_id,
+                          parse_mode="Markdown", reply_markup=num_actions(uid, prefix, aid))
+    # تنظيف
+    del user_data[uid]
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("ch_"))
 def ch_num(call):
     uid, _, p, oa = call.from_user.id, *call.data.split("_")
     if oa: api.delete(oa)
     release(uid)
-    try:
-        aid, num = api.get(p); num = clean(num); assign(uid, aid, num, p)
-        name, flag = db.get_countries().get(p, (p, "🏳"))
-        bot.edit_message_text(t("number_changed", uid, number=num, flag=flag, country=name),
-                              call.message.chat.id, call.message.message_id,
-                              parse_mode="Markdown", reply_markup=num_actions(uid, p, aid))
-    except Exception as e:
-        bot.answer_callback_query(call.id, f"❌ {str(e)[:80]}", show_alert=True)
+    # إعادة عرض 3 أرقام جديدة
+    # نقوم بنفس منطق choose_country
+    numbers = []
+    for _ in range(3):
+        try:
+            aid, num = api.get(p)
+            numbers.append((aid, clean(num)))
+        except: pass
+    if not numbers:
+        bot.answer_callback_query(call.id, "❌ فشل جلب أرقام جديدة", show_alert=True)
+        return
+    user_data[uid] = {"prefix": p, "numbers": numbers}
+    mk = types.InlineKeyboardMarkup(row_width=1)
+    for i, (aid, num) in enumerate(numbers[:3]):
+        mk.add(types.InlineKeyboardButton(f"{i+1}. +{num}", callback_data=f"pick_{i}"))
+    mk.add(types.InlineKeyboardButton("🔄 جلب غيرها", callback_data=f"ch_{p}_0"))  # 0 مهمل
+    mk.add(types.InlineKeyboardButton("↩️ رجوع", callback_data="menu_countries"))
+    name, flag = db.get_countries().get(p, (p, "🏳"))
+    bot.edit_message_text(
+        f"{t('choose_number', uid)}\n\n🌍 {flag} {name}",
+        call.message.chat.id, call.message.message_id,
+        parse_mode="Markdown", reply_markup=mk
+    )
 
 @bot.callback_query_handler(func=lambda c: c.data in ["menu_countries","menu_main"])
 def menu_back(call):
@@ -512,40 +577,40 @@ def admin_panel(message):
            types.InlineKeyboardButton("↩️ خروج", callback_data="menu_main"))
     bot.send_message(message.chat.id, t("admin_panel", uid), parse_mode="Markdown", reply_markup=mk)
 
-user_states = {}
+admin_states = {}
 
 @bot.callback_query_handler(func=lambda c: c.data=="tog")
 def tog(call): db.setting("maintenance","0" if db.setting("maintenance")=="1" else "1"); bot.answer_callback_query(call.id,"✅"); admin_panel(call.message)
 
 @bot.callback_query_handler(func=lambda c: c.data=="add_country")
 def add_country(call):
-    user_states[call.from_user.id] = "add_prefix"
+    admin_states[call.from_user.id] = "add_prefix"
     bot.edit_message_text(t("admin_add_prefix", call.from_user.id), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "add_prefix")
+@bot.message_handler(func=lambda m: admin_states.get(m.from_user.id) == "add_prefix")
 def add_prefix_exec(message):
     uid = message.from_user.id
     prefix = message.text.strip()
     status, name, flag = db.add_country(prefix)
     if status == "added":
         bot.send_message(message.chat.id, t("prefix_added", uid, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
-        del user_states[uid]
+        del admin_states[uid]
     elif status == "exists":
         name, flag = ALL_COUNTRIES.get(prefix, (prefix, "🏳"))
         bot.send_message(message.chat.id, t("prefix_exists", uid, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
-        del user_states[uid]
+        del admin_states[uid]
     else:
-        user_states[uid] = ("add_name", prefix)
+        admin_states[uid] = ("add_name", prefix)
         bot.send_message(message.chat.id, t("prefix_unknown", uid), parse_mode="Markdown")
 
-@bot.message_handler(func=lambda m: isinstance(user_states.get(m.from_user.id), tuple) and user_states[m.from_user.id][0] == "add_name")
+@bot.message_handler(func=lambda m: isinstance(admin_states.get(m.from_user.id), tuple) and admin_states[m.from_user.id][0] == "add_name")
 def add_name_exec(message):
     uid = message.from_user.id
-    prefix = user_states[uid][1]
+    prefix = admin_states[uid][1]
     name = message.text.strip()
     db.add_country(prefix, name)
     bot.send_message(message.chat.id, f"✅ تمت إضافة {name}")
-    del user_states[uid]
+    del admin_states[uid]
 
 @bot.callback_query_handler(func=lambda c: c.data=="del_country")
 def del_country(call):
@@ -566,10 +631,10 @@ def delc(call):
 
 @bot.callback_query_handler(func=lambda c: c.data=="broadcast")
 def broadcast(call):
-    user_states[call.from_user.id] = "broadcast"
+    admin_states[call.from_user.id] = "broadcast"
     bot.edit_message_text(t("admin_broadcast", call.from_user.id), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "broadcast")
+@bot.message_handler(func=lambda m: admin_states.get(m.from_user.id) == "broadcast")
 def broadcast_exec(message):
     uid = message.from_user.id
     users = db.all_users()
@@ -581,7 +646,7 @@ def broadcast_exec(message):
             time.sleep(0.03)
         except: pass
     bot.send_message(message.chat.id, t("admin_broadcast_done", uid, cnt=cnt), parse_mode="Markdown")
-    del user_states[uid]
+    del admin_states[uid]
 
 @bot.callback_query_handler(func=lambda c: c.data=="stats_btn")
 def stats_btn(call):
@@ -612,21 +677,21 @@ def report(call):
 
 @bot.callback_query_handler(func=lambda c: c.data in ["ban","unban"])
 def ban_unban_prompt(call):
-    user_states[call.from_user.id] = call.data
+    admin_states[call.from_user.id] = call.data
     txt = t("admin_ban", call.from_user.id) if call.data=="ban" else t("admin_unban", call.from_user.id)
     bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda m: user_states.get(m.from_user.id) in ["ban","unban"])
+@bot.message_handler(func=lambda m: admin_states.get(m.from_user.id) in ["ban","unban"])
 def ban_unban_exec(message):
     uid = message.from_user.id
-    action = user_states[uid]
+    action = admin_states[uid]
     try:
         target = int(message.text)
         db.conn.cursor().execute(f"UPDATE users SET is_banned={'1' if action=='ban' else '0'} WHERE user_id=?", (target,))
         db.conn.commit()
         bot.send_message(message.chat.id, t("admin_done", uid), parse_mode="Markdown")
     except: bot.send_message(message.chat.id, "❌ خطأ")
-    del user_states[uid]
+    del admin_states[uid]
 
 @bot.callback_query_handler(func=lambda c: c.data=="users_list")
 def users_list(call):
@@ -644,22 +709,22 @@ def force_sub(call):
 
 @bot.callback_query_handler(func=lambda c: c.data=="addch")
 def addch(call):
-    user_states[call.from_user.id] = "addch_url"
+    admin_states[call.from_user.id] = "addch_url"
     bot.edit_message_text("*أرسل رابط القناة:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "addch_url")
+@bot.message_handler(func=lambda m: admin_states.get(m.from_user.id) == "addch_url")
 def addch_url(message):
-    user_states[message.from_user.id] = ("addch_desc", message.text.strip())
+    admin_states[message.from_user.id] = ("addch_desc", message.text.strip())
     bot.send_message(message.chat.id, "أرسل وصفاً:")
 
-@bot.message_handler(func=lambda m: isinstance(user_states.get(m.from_user.id), tuple) and user_states[m.from_user.id][0] == "addch_desc")
+@bot.message_handler(func=lambda m: isinstance(admin_states.get(m.from_user.id), tuple) and admin_states[m.from_user.id][0] == "addch_desc")
 def addch_desc(message):
-    url = user_states[message.from_user.id][1]
+    url = admin_states[message.from_user.id][1]
     desc = message.text.strip()
     db.conn.cursor().execute("INSERT OR IGNORE INTO force_channels (channel_url, description) VALUES (?,?)", (url, desc))
     db.conn.commit()
     bot.send_message(message.chat.id, "✅ تمت")
-    del user_states[message.from_user.id]
+    del admin_states[message.from_user.id]
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("edch_"))
 def edch(call):
@@ -669,14 +734,14 @@ def edch(call):
 
 @bot.callback_query_handler(func=lambda c: c.data=="set_photo")
 def set_photo(call):
-    user_states[call.from_user.id] = "photo"
+    admin_states[call.from_user.id] = "photo"
     bot.edit_message_text("*أرسل الصورة:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
-@bot.message_handler(content_types=['photo'], func=lambda m: user_states.get(m.from_user.id) == "photo")
+@bot.message_handler(content_types=['photo'], func=lambda m: admin_states.get(m.from_user.id) == "photo")
 def save_photo(message):
     db.setting("welcome_photo", message.photo[-1].file_id)
     bot.send_message(message.chat.id, "✅ تم")
-    del user_states[message.from_user.id]
+    del admin_states[message.from_user.id]
 
 @bot.callback_query_handler(func=lambda c: c.data=="clear_data")
 def clear_data(call):
