@@ -17,7 +17,7 @@ DELETE_AFTER = 180
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ════════════════ جميع دول العالم (للتعرف التلقائي) ════════════════
+# ════════════════ جميع دول العالم ════════════════
 ALL_COUNTRIES = {
     "1": ("USA", "🇺🇸"), "7": ("Russia", "🇷🇺"), "20": ("Egypt", "🇪🇬"),
     "27": ("South Africa", "🇿🇦"), "30": ("Greece", "🇬🇷"), "31": ("Netherlands", "🇳🇱"),
@@ -323,12 +323,6 @@ def sub_markup():
     mk.add(types.InlineKeyboardButton("✅ تحقق", callback_data="check_sub"))
     return mk
 
-def lang_markup():
-    mk = types.InlineKeyboardMarkup()
-    mk.add(types.InlineKeyboardButton("🇸🇦 العربية", callback_data="lang_ar"),
-           types.InlineKeyboardButton("🇬🇧 English", callback_data="lang_en"))
-    return mk
-
 def delete_later(cid, mid, delay=180):
     time.sleep(delay)
     try: bot.delete_message(cid, mid)
@@ -346,7 +340,6 @@ def main_kb(uid):
     return kb
 
 def countries_menu():
-    """قائمة الدول بشكل 3 أعمدة احترافية"""
     countries = sorted(db.get_countries().items())
     mk = types.InlineKeyboardMarkup(row_width=3)
     btns = [types.InlineKeyboardButton(f"{flag} {prefix}", callback_data=f"choose_{prefix}") for prefix, (name, flag) in countries]
@@ -393,7 +386,9 @@ def start(msg):
             c.execute("UPDATE users SET balance=balance+0.05 WHERE user_id=?", (ref[0],))
             db.conn.commit()
     if not db.get_user(uid) or not db.get_user(uid)[3]:
-        bot.send_message(cid, t("lang_select", uid), parse_mode="Markdown", reply_markup=lang_markup())
+        bot.send_message(cid, t("lang_select", uid), parse_mode="Markdown", reply_markup=types.InlineKeyboardMarkup().add(
+            types.InlineKeyboardButton("🇸🇦 العربية", callback_data="lang_ar"),
+            types.InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")))
         return
     show_home(cid, uid)
 
@@ -405,7 +400,6 @@ def set_lang(call):
     bot.answer_callback_query(call.id, t("lang_changed", uid))
     try: bot.delete_message(cid, call.message.message_id)
     except: pass
-    # تحديث الكيبورد فقط دون إعادة إرسال الترحيب
     bot.send_message(cid, "• • •", reply_markup=main_kb(uid))
 
 @bot.callback_query_handler(func=lambda c: c.data=="check_sub")
@@ -424,7 +418,6 @@ def choose_country(call):
     uid = call.from_user.id
     prefix = call.data.split("_")[1]
     release(uid)
-    # جلب 3 أرقام من API
     numbers = []
     errors = []
     for _ in range(3):
@@ -436,8 +429,6 @@ def choose_country(call):
     if not numbers:
         bot.answer_callback_query(call.id, f"❌ فشل جلب أرقام: {', '.join(errors[:1])}", show_alert=True)
         return
-    # تخزين مؤقت للأرقام في قاعدة بيانات أو session (سنستخدم كائن بسيط)
-    # سنستخدم user_data لتخزين الأرقام المقترحة
     user_data[uid] = {"prefix": prefix, "numbers": numbers}
     mk = types.InlineKeyboardMarkup(row_width=1)
     for i, (aid, num) in enumerate(numbers[:3]):
@@ -451,7 +442,6 @@ def choose_country(call):
         parse_mode="Markdown", reply_markup=mk
     )
 
-# بيانات مؤقتة للمستخدمين (للأرقام المقترحة)
 user_data = {}
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("pick_"))
@@ -467,17 +457,14 @@ def pick_number(call):
         bot.answer_callback_query(call.id, "رقم غير صالح")
         return
     aid, num = numbers[idx]
-    # حذف الأرقام الأخرى من API (التي لم تختر)
     for i, (a, n) in enumerate(numbers):
         if i != idx:
             api.delete(a)
-    # تعيين الرقم المختار
     assign(uid, aid, num, prefix)
     name, flag = db.get_countries().get(prefix, (prefix, "🏳"))
     bot.edit_message_text(t("number_assigned", uid, number=num, flag=flag, country=name),
                           call.message.chat.id, call.message.message_id,
                           parse_mode="Markdown", reply_markup=num_actions(uid, prefix, aid))
-    # تنظيف
     del user_data[uid]
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("ch_"))
@@ -485,8 +472,6 @@ def ch_num(call):
     uid, _, p, oa = call.from_user.id, *call.data.split("_")
     if oa: api.delete(oa)
     release(uid)
-    # إعادة عرض 3 أرقام جديدة
-    # نقوم بنفس منطق choose_country
     numbers = []
     for _ in range(3):
         try:
@@ -500,7 +485,7 @@ def ch_num(call):
     mk = types.InlineKeyboardMarkup(row_width=1)
     for i, (aid, num) in enumerate(numbers[:3]):
         mk.add(types.InlineKeyboardButton(f"{i+1}. +{num}", callback_data=f"pick_{i}"))
-    mk.add(types.InlineKeyboardButton("🔄 جلب غيرها", callback_data=f"ch_{p}_0"))  # 0 مهمل
+    mk.add(types.InlineKeyboardButton("🔄 جلب غيرها", callback_data=f"ch_{p}_0"))
     mk.add(types.InlineKeyboardButton("↩️ رجوع", callback_data="menu_countries"))
     name, flag = db.get_countries().get(p, (p, "🏳"))
     bot.edit_message_text(
@@ -529,32 +514,39 @@ def menu_back(call):
 ])
 def handle_buttons(message):
     uid = message.from_user.id
-    if message.text in [btn("new_num", uid)]:
+    txt = message.text
+    if txt in [btn("new_num", uid)]:
         bot.send_message(message.chat.id, t("choose_country", uid), parse_mode="Markdown", reply_markup=countries_menu())
-    elif message.text in [btn("countries", uid)]:
+    elif txt in [btn("countries", uid)]:
         countries = db.get_countries()
-        txt = t("countries_list", uid) + "\n".join(f"{flag} {name}" for _, (name, flag) in sorted(countries.items()))
-        bot.send_message(message.chat.id, txt, parse_mode="Markdown")
-    elif message.text in [btn("stats", uid)]:
+        msg = t("countries_list", uid) + "\n".join(f"{flag} {name}" for _, (name, flag) in sorted(countries.items()))
+        bot.send_message(message.chat.id, msg, parse_mode="Markdown")
+    elif txt in [btn("stats", uid)]:
         u = db.get_user(uid)
         bot.send_message(message.chat.id, t("stats", uid, req=u[6] if u else 0, otp=u[7] if u else 0), parse_mode="Markdown")
-    elif message.text in [btn("balance", uid)]:
+    elif txt in [btn("balance", uid)]:
         u = db.get_user(uid)
         ref = db.conn.cursor().execute("SELECT ref_count FROM referrals WHERE user_id=?", (uid,)).fetchone()
         bot.send_message(message.chat.id, t("balance", uid, bal=u[4] if u else 0, ref=ref[0] if ref else 0, site=api.balance()), parse_mode="Markdown")
-    elif message.text in [btn("invite", uid)]:
+    elif txt in [btn("invite", uid)]:
         rc = f"ref{uid}"
         db.conn.cursor().execute("INSERT OR IGNORE INTO referrals VALUES (?,?,0)", (uid, rc))
         db.conn.commit()
         bot.send_message(message.chat.id, t("invite", uid, link=f"https://t.me/Taker_OTP_BOT?start={rc}"), parse_mode="Markdown")
-    elif message.text in [btn("traffic", uid)]:
+    elif txt in [btn("traffic", uid)]:
         rows = db.conn.cursor().execute("SELECT prefix, COUNT(*) FROM active_numbers WHERE status='waiting' GROUP BY prefix ORDER BY COUNT(*) DESC LIMIT 10").fetchall()
         if not rows: bot.send_message(message.chat.id, t("no_active", uid), parse_mode="Markdown")
         else:
             lines = [t("traffic_title", uid), ""] + [f"{db.get_countries().get(p, (p,'🏳'))[1]} {db.get_countries().get(p, (p,''))[0]}: `{cnt}`" for p, cnt in rows]
             bot.send_message(message.chat.id, "\n".join(lines), parse_mode="Markdown")
-    elif message.text in [btn("lang", uid)]:
-        bot.send_message(message.chat.id, t("lang_select", uid), parse_mode="Markdown", reply_markup=lang_markup())
+    elif txt in [btn("lang", uid)]:
+        # تغيير اللغة مباشرة دون إعادة إرسال رسالة الاختيار
+        u = db.get_user(uid)
+        current_lang = u[3] if u else "ar"
+        new_lang = "en" if current_lang == "ar" else "ar"
+        db.set_lang(uid, new_lang)
+        bot.send_message(message.chat.id, t("lang_changed", uid), parse_mode="Markdown")
+        bot.send_message(message.chat.id, "• • •", reply_markup=main_kb(uid))
 
 # ════════════════ لوحة الإدارة الكاملة ════════════════
 @bot.message_handler(func=lambda m: m.text in ["⚙️ الإدارة", "⚙️ Admin"] and m.from_user.id in ADMIN_IDS)
