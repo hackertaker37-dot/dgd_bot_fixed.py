@@ -512,6 +512,18 @@ def menu_back(call):
 def handle_buttons(message):
     uid = message.from_user.id
     txt = message.text
+
+    # زر تغيير اللغة – يعيد تحميل القائمة الرئيسية بالكامل
+    if txt in ["🌐 اللغة", "🌐 Language"]:
+        u = db.get_user(uid)
+        current_lang = u[3] if u else "ar"
+        new_lang = "en" if current_lang == "ar" else "ar"
+        db.set_lang(uid, new_lang)
+        bot.send_message(message.chat.id, t("lang_changed", uid), parse_mode="Markdown")
+        show_home(message.chat.id, uid)
+        return
+
+    # باقي الأزرار
     if txt in [btn("new_num", uid)]:
         bot.send_message(message.chat.id, t("choose_country", uid), parse_mode="Markdown", reply_markup=countries_menu())
     elif txt in [btn("countries", uid)]:
@@ -536,14 +548,6 @@ def handle_buttons(message):
         else:
             lines = [t("traffic_title", uid), ""] + [f"{db.get_countries().get(p, (p,'🏳'))[1]} {db.get_countries().get(p, (p,''))[0]}: `{cnt}`" for p, cnt in rows]
             bot.send_message(message.chat.id, "\n".join(lines), parse_mode="Markdown")
-    elif txt in [btn("lang", uid)]:
-        # تغيير اللغة مباشرة مع تحديث الكيبورد فقط
-        u = db.get_user(uid)
-        current_lang = u[3] if u else "ar"
-        new_lang = "en" if current_lang == "ar" else "ar"
-        db.set_lang(uid, new_lang)
-        bot.send_message(message.chat.id, t("lang_changed", uid), parse_mode="Markdown")
-        bot.send_message(message.chat.id, "• • •", reply_markup=main_kb(uid))
 
 # ════════════════ لوحة الإدارة الكاملة ════════════════
 @bot.message_handler(func=lambda m: m.text in ["⚙️ الإدارة", "⚙️ Admin"] and m.from_user.id in ADMIN_IDS)
