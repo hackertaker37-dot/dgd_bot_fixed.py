@@ -12,7 +12,7 @@ BASE_URL = "http://xwdsms.org"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
 DB_PATH = "taker_final.db"
-DELETE_AFTER = 180
+DELETE_AFTER = 180  # حذف رسائل الجروب بعد 3 دقائق
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -190,7 +190,8 @@ class Database:
         return [r[0] for r in self.conn.cursor().execute("SELECT prefix FROM active_prefixes ORDER BY prefix").fetchall()]
 
     def get_country_from_prefix(self, prefix):
-        prefix = re.sub(r'\D', '', prefix)  # إزالة كل الرموز غير الرقمية
+        """البحث عن الدولة بناءً على الكود"""
+        prefix = re.sub(r'[^\d]', '', str(prefix))
         best_code = None
         best_len = 0
         for code in ALL_COUNTRIES:
@@ -202,7 +203,8 @@ class Database:
         return None
 
     def add_prefix(self, prefix):
-        prefix = re.sub(r'\D', '', prefix)
+        """إضافة دولة معروفة تلقائياً"""
+        prefix = re.sub(r'[^\d]', '', str(prefix))
         country = self.get_country_from_prefix(prefix)
         if not country:
             return "not_found", None, None
@@ -215,7 +217,8 @@ class Database:
         return "added", name, flag
 
     def add_custom_prefix(self, prefix, name, flag=""):
-        prefix = re.sub(r'\D', '', prefix)
+        """إضافة يدوية مع اسم وعلم"""
+        prefix = re.sub(r'[^\d]', '', str(prefix))
         c = self.conn.cursor()
         c.execute("INSERT OR IGNORE INTO active_prefixes VALUES (?)", (prefix,))
         c.execute("INSERT OR REPLACE INTO custom_prefixes VALUES (?,?,?)", (prefix, name, flag))
@@ -223,6 +226,7 @@ class Database:
         return "added"
 
     def get_country_info(self, prefix):
+        """جلب معلومات الدولة (اسم، علم) – لن يرجع 🏳 أبداً"""
         # أولاً ALL_COUNTRIES
         country = self.get_country_from_prefix(prefix)
         if country:
@@ -233,7 +237,7 @@ class Database:
         row = c.fetchone()
         if row:
             return (row[0], row[1] if row[1] else "")
-        # إذا لم يوجد، أرجع الاسم بدون علم
+        # إذا لم يوجد، أرجع الاسم بدون علم (فارغ)
         return (prefix, "")
 
     def remove_prefix(self, prefix):
@@ -297,9 +301,9 @@ class API:
 api = API()
 
 # ════════════════ دوال مساعدة ════════════════
-def clean(n):
+def clean_phone(num):
     """إزالة جميع الرموز غير الرقمية من الرقم"""
-    return re.sub(r'\D', '', str(n))
+    return re.sub(r'[^\d]', '', str(num))
 
 def detect_service(txt):
     t = str(txt).lower()
@@ -312,7 +316,9 @@ def detect_service(txt):
         if any(k in t for k in kws): return svc
     return "OTP"
 
-def mask(n): n=str(n); return f"{n[:4]}****{n[-3:]}" if len(n)>7 else n
+def mask_phone(n):
+    n = str(n)
+    return f"{n[:4]}****{n[-3:]}" if len(n) > 7 else n
 
 def release(uid):
     c = db.conn.cursor()
@@ -324,7 +330,7 @@ def release(uid):
 def assign(uid, aid, num, p):
     c = db.conn.cursor()
     c.execute("INSERT INTO active_numbers VALUES (?,?,?,?,?,?,NULL)",
-             (aid, clean(num), p, uid, datetime.now().isoformat(), 'waiting'))
+             (aid, clean_phone(num), p, uid, datetime.now().isoformat(), 'waiting'))
     c.execute("UPDATE users SET total_requests=total_requests+1 WHERE user_id=?", (uid,))
     db.conn.commit()
 
@@ -360,6 +366,13 @@ def delete_later(cid, mid, delay=180):
     try: bot.delete_message(cid, mid)
     except: pass
 
+def find_flag_by_name(name):
+    """البحث عن علم دولة من اسمها"""
+    for c_name, c_flag in ALL_COUNTRIES.values():
+        if name.lower() == c_name.lower():
+            return c_flag
+    return ""
+
 # ════════════════ بوت تيليجرام ════════════════
 bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
@@ -377,7 +390,7 @@ def countries_menu():
     btns = []
     for p in db.prefixes():
         name, flag = db.get_country_info(p)
-        display = f"{flag} {name}" if flag else name
+        display = f"{flag} {name}".strip()
         btns.append(types.InlineKeyboardButton(display, callback_data=f"get_{p}"))
     for i in range(0, len(btns), 2): mk.row(*btns[i:i+2])
     return mk
@@ -449,12 +462,12 @@ def get_num(call):
     release(uid)
     try:
         aid, num = api.get(p)
-        num_clean = clean(num)  # إزالة جميع الرموز غير الرقمية
-        assign(uid, aid, num_clean, p)
+        clean_num = clean_phone(num)
+        assign(uid, aid, clean_num, p)
         name, flag = db.get_country_info(p)
         flag_display = f"{flag} " if flag else ""
         bot.edit_message_text(
-            f"✅ *تم تخصيص رقم*\n\n📞 `{num_clean}`\n🌍 {flag_display}{name}\n⏳ بانتظار الكود...",
+            f"✅ *تم تخصيص رقم*\n\n📞 `{clean_num}`\n🌍 {flag_display}{name}\n⏳ بانتظار الكود...",
             call.message.chat.id, call.message.message_id,
             parse_mode="Markdown", reply_markup=num_actions(uid, p, aid)
         )
@@ -468,12 +481,12 @@ def ch_num(call):
     release(uid)
     try:
         aid, num = api.get(p)
-        num_clean = clean(num)
-        assign(uid, aid, num_clean, p)
+        clean_num = clean_phone(num)
+        assign(uid, aid, clean_num, p)
         name, flag = db.get_country_info(p)
         flag_display = f"{flag} " if flag else ""
         bot.edit_message_text(
-            f"🔄 *تم تغيير الرقم*\n\n📞 `{num_clean}`\n🌍 {flag_display}{name}\n⏳ بانتظار الكود...",
+            f"🔄 *تم تغيير الرقم*\n\n📞 `{clean_num}`\n🌍 {flag_display}{name}\n⏳ بانتظار الكود...",
             call.message.chat.id, call.message.message_id,
             parse_mode="Markdown", reply_markup=num_actions(uid, p, aid)
         )
@@ -496,6 +509,7 @@ def menu_back(call):
 def add_prefix_handler(message):
     uid = message.from_user.id
     prefix = message.text.strip()
+    # إزالة أي علامات زائدة
     status, name, flag = db.add_prefix(prefix)
     if status == "added":
         flag_display = f"{flag} " if flag else ""
@@ -512,14 +526,8 @@ def add_name_handler(message):
     uid = message.from_user.id
     prefix = user_states[uid][1]
     name = message.text.strip()
-    
-    # ابحث عن علم مطابق
-    flag = ""
-    for c_name, c_flag in ALL_COUNTRIES.values():
-        if name.lower() == c_name.lower():
-            flag = c_flag
-            break
-    
+    # ابحث عن العلم
+    flag = find_flag_by_name(name)
     db.add_custom_prefix(prefix, name, flag)
     flag_display = f"{flag} " if flag else ""
     bot.send_message(message.chat.id,
@@ -592,8 +600,11 @@ def handle_buttons(message):
         bot.send_message(message.chat.id, t("choose_country", uid), parse_mode="Markdown", reply_markup=countries_menu())
     elif txt in [btn("countries", uid)]:
         pfx = db.prefixes()
-        msg = t("countries_list", uid) + "\n".join(f"{db.get_country_info(p)[1]} {p}" for p in pfx)
-        bot.send_message(message.chat.id, msg, parse_mode="Markdown")
+        lines = []
+        for p in pfx:
+            name, flag = db.get_country_info(p)
+            lines.append(f"{flag} {name} (`{p}`)" if flag else f"{name} (`{p}`)")
+        bot.send_message(message.chat.id, t("countries_list", uid) + "\n".join(lines), parse_mode="Markdown")
     elif txt in [btn("stats", uid)]:
         u = db.get_user(uid)
         bot.send_message(message.chat.id, t("stats", uid, req=u[6] if u else 0, otp=u[7] if u else 0), parse_mode="Markdown")
@@ -611,14 +622,18 @@ def handle_buttons(message):
         rows = db.conn.cursor().execute("SELECT prefix, COUNT(*) FROM active_numbers WHERE status='waiting' GROUP BY prefix ORDER BY COUNT(*) DESC LIMIT 10").fetchall()
         if not rows: bot.send_message(message.chat.id, t("no_active", uid), parse_mode="Markdown")
         else:
-            lines = [t("traffic_title", uid), ""] + [f"{db.get_country_info(p)[1]} {db.get_country_info(p)[0]}: `{cnt}`" for p, cnt in rows]
+            lines = [t("traffic_title", uid), ""]
+            for p, cnt in rows:
+                name, flag = db.get_country_info(p)
+                display = f"{flag} {name}" if flag else name
+                lines.append(f"{display}: `{cnt}`")
             bot.send_message(message.chat.id, "\n".join(lines), parse_mode="Markdown")
     elif txt in [btn("lang", uid)]:
         bot.send_message(message.chat.id, t("lang_select", uid), parse_mode="Markdown", reply_markup=lang_markup())
     elif txt in [btn("admin", uid)] and uid in ADMIN_IDS:
         admin_panel(message)
 
-# ════════════════ لوحة الإدارة ════════════════
+# ════════════════ لوحة الإدارة (callbacks) ════════════════
 def admin_panel(message):
     uid = message.from_user.id
     cid = message.chat.id
@@ -657,7 +672,7 @@ def del_country_cb(call):
     mk = types.InlineKeyboardMarkup()
     for p in pfx:
         name, flag = db.get_country_info(p)
-        display = f"{flag} {name}" if flag else name
+        display = f"{flag} {name}".strip()
         mk.add(types.InlineKeyboardButton(display, callback_data=f"delc_{p}"))
     mk.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_back"))
     bot.edit_message_text(t("admin_del_prefix", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=mk)
@@ -745,7 +760,7 @@ def otp_loop():
                             except: pass
                         for cid in CHAT_IDS:
                             try:
-                                sent=bot.send_message(cid, t("otp_group", None, flag=flag, name=name, icon=ic, service=svc, masked=mask(num), code=code), parse_mode="Markdown")
+                                sent=bot.send_message(cid, t("otp_group", None, flag=flag, name=name, icon=ic, service=svc, masked=mask_phone(num), code=code), parse_mode="Markdown")
                                 threading.Thread(target=delete_later, args=(cid, sent.message_id, DELETE_AFTER), daemon=True).start()
                             except: pass
                         c=db.conn.cursor(); c.execute("INSERT INTO otp_logs VALUES (NULL,?,?,?,?,?)", (num,otp,svc,name,datetime.now().isoformat()))
