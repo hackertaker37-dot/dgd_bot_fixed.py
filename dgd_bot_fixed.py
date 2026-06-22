@@ -12,7 +12,7 @@ BASE_URL = "http://xwdsms.org"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
 DB_PATH = "taker_final.db"
-DELETE_AFTER = 180  # حذف رسائل الجروب بعد 3 دقائق
+DELETE_AFTER = 180
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -188,6 +188,8 @@ class Database:
         return [r[0] for r in self.conn.cursor().execute("SELECT prefix FROM active_prefixes ORDER BY prefix").fetchall()]
 
     def get_country_from_prefix(self, prefix):
+        # إزالة أي علامة + زائدة
+        prefix = prefix.replace("+", "").strip()
         best_code = None
         best_len = 0
         for code in ALL_COUNTRIES:
@@ -199,6 +201,7 @@ class Database:
         return None
 
     def add_prefix(self, prefix):
+        prefix = prefix.replace("+", "").strip()
         country = self.get_country_from_prefix(prefix)
         if not country:
             return "not_found", None, None
@@ -210,15 +213,39 @@ class Database:
         self.conn.commit()
         return "added", name, flag
 
-    def remove_prefix(self, prefix):
-        self.conn.cursor().execute("DELETE FROM active_prefixes WHERE prefix=?", (prefix,))
+    def add_custom_prefix(self, prefix, name, flag):
+        """إضافة يدوية مع إمكانية تخزين العلم والاسم"""
+        prefix = prefix.replace("+", "").strip()
+        c = self.conn.cursor()
+        c.execute("INSERT OR REPLACE INTO active_prefixes VALUES (?)", (prefix,))
+        # تخزين الاسم والعلم في جدول منفصل إذا أردت، لكن هنا سنكتفي بالـ prefix فقط،
+        # وسنستخدم ALL_COUNTRIES للعرض، أو نضيف جدول مخصص للبيانات المخصصة.
+        # لتجنب التعقيد، سنعتمد على أنه عند الطلب سنبحث في ALL_COUNTRIES، وإلا نعرض الاسم المُدخل.
+        # لذا سنخزن الاسم والعلم في جدول custom_prefixes (سننشئه)
+        c.execute('''CREATE TABLE IF NOT EXISTS custom_prefixes 
+                     (prefix TEXT PRIMARY KEY, name TEXT, flag TEXT)''')
+        c.execute("INSERT OR REPLACE INTO custom_prefixes VALUES (?,?,?)", (prefix, name, flag))
         self.conn.commit()
+        return "added"
 
     def get_country_info(self, prefix):
+        # أولاً ابحث في ALL_COUNTRIES
         country = self.get_country_from_prefix(prefix)
         if country:
             return country
-        return (prefix, "🏳")
+        # ثم ابحث في custom_prefixes
+        c = self.conn.cursor()
+        c.execute("SELECT name, flag FROM custom_prefixes WHERE prefix=?", (prefix,))
+        row = c.fetchone()
+        if row:
+            return (row[0], row[1] if row[1] else "")
+        # إذا لم يوجد، أرجع اسم prefix وعلم فارغ
+        return (prefix, "")
+
+    def remove_prefix(self, prefix):
+        self.conn.cursor().execute("DELETE FROM active_prefixes WHERE prefix=?", (prefix,))
+        self.conn.cursor().execute("DELETE FROM custom_prefixes WHERE prefix=?", (prefix,))
+        self.conn.commit()
 
     def get_user(self, uid):
         return self.conn.cursor().execute("SELECT * FROM users WHERE user_id=?", (uid,)).fetchone()
@@ -247,7 +274,6 @@ class API:
         self.s.headers.update({"x-api-key": API_KEY, "Content-Type": "application/json"})
 
     def get(self, p):
-        """طلب رقم من الموقع"""
         r = self.s.post(f"{BASE_URL}/api/v1/get-number", json={"range": p}, timeout=8)
         d = r.json()
         if not d.get("success"):
@@ -255,7 +281,6 @@ class API:
         return d["id"], d["number"]
 
     def check(self, n):
-        """فحص OTP لرقم"""
         try:
             r = self.s.get(f"{BASE_URL}/api/v1/check-otp", params={"number": n}, timeout=6)
             d = r.json()
@@ -264,14 +289,12 @@ class API:
             return None, None
 
     def delete(self, aid):
-        """حذف رقم من الموقع"""
         try:
             self.s.post(f"{BASE_URL}/api/v1/delete-number", json={"id": aid}, timeout=4)
         except:
             pass
 
     def balance(self):
-        """جلب رصيد الحساب"""
         try:
             return self.s.get(f"{BASE_URL}/api/v1/balance", timeout=6).json().get("balance", "0")
         except:
@@ -355,7 +378,12 @@ def main_kb(uid):
 
 def countries_menu():
     mk = types.InlineKeyboardMarkup(row_width=2)
-    btns = [types.InlineKeyboardButton(f"{db.get_country_info(p)[1]} {db.get_country_info(p)[0]}", callback_data=f"get_{p}") for p in db.prefixes()]
+    btns = []
+    for p in db.prefixes():
+        name, flag = db.get_country_info(p)
+        # flag قد يكون فارغاً إذا لم يوجد علم
+        display = f"{flag} {name}" if flag else name
+        btns.append(types.InlineKeyboardButton(display, callback_data=f"get_{p}"))
     for i in range(0, len(btns), 2): mk.row(*btns[i:i+2])
     return mk
 
@@ -425,9 +453,11 @@ def get_num(call):
     uid, p = call.from_user.id, call.data.split("_")[1]
     release(uid)
     try:
-        aid, num = api.get(p); num = clean(num); assign(uid, aid, num, p)
+        aid, num = api.get(p)
+        num_clean = clean(num)  # إزالة + من الرقم للعرض
+        assign(uid, aid, num_clean, p)
         name, flag = db.get_country_info(p)
-        bot.edit_message_text(t("number_assigned", uid, number=num, flag=flag, country=name),
+        bot.edit_message_text(t("number_assigned", uid, number=num_clean, flag=flag, country=name),
                               call.message.chat.id, call.message.message_id,
                               parse_mode="Markdown", reply_markup=num_actions(uid, p, aid))
     except Exception as e:
@@ -439,9 +469,11 @@ def ch_num(call):
     if oa: api.delete(oa)
     release(uid)
     try:
-        aid, num = api.get(p); num = clean(num); assign(uid, aid, num, p)
+        aid, num = api.get(p)
+        num_clean = clean(num)
+        assign(uid, aid, num_clean, p)
         name, flag = db.get_country_info(p)
-        bot.edit_message_text(t("number_changed", uid, number=num, flag=flag, country=name),
+        bot.edit_message_text(t("number_changed", uid, number=num_clean, flag=flag, country=name),
                               call.message.chat.id, call.message.message_id,
                               parse_mode="Markdown", reply_markup=num_actions(uid, p, aid))
     except Exception as e:
@@ -470,7 +502,32 @@ def add_prefix_handler(message):
     elif status == "exists":
         bot.send_message(message.chat.id, t("prefix_exists", uid, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
     else:
-        bot.send_message(message.chat.id, t("prefix_not_found", uid, prefix=prefix), parse_mode="Markdown")
+        # لم يتم التعرف على الدولة – نطلب الاسم وسنبحث عن العلم لاحقاً
+        user_states[uid] = ("add_name", prefix)
+        bot.send_message(message.chat.id, "لم يتم التعرف على الدولة تلقائياً.\nأرسل اسم الدولة (بالعربية أو الإنجليزية):")
+
+@bot.message_handler(func=lambda m: isinstance(user_states.get(m.from_user.id), tuple) and user_states[m.from_user.id][0] == "add_name")
+def add_name_handler(message):
+    uid = message.from_user.id
+    prefix = user_states[uid][1]
+    name = message.text.strip()
+    
+    # ابحث عن علم مطابق للاسم في ALL_COUNTRIES
+    flag = ""
+    for c_name, c_flag in ALL_COUNTRIES.values():
+        if name.lower() == c_name.lower():
+            flag = c_flag
+            break
+    if not flag:
+        # حاول البحث بالاسم الشائع (مصر = Egypt)
+        # يمكن إضافة قاموس ترجمة صغير
+        pass
+
+    db.add_custom_prefix(prefix, name, flag)
+    display_flag = flag if flag else ""
+    bot.send_message(message.chat.id,
+                     f"✅ *تمت إضافة الدولة بنجاح*\n\n🌍 {display_flag} {name}\n🔢 `{prefix}`\n\nأصبحت متاحة للمستخدمين الآن",
+                     parse_mode="Markdown")
     del user_states[uid]
 
 @bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "broadcast")
@@ -603,7 +660,8 @@ def del_country_cb(call):
     mk = types.InlineKeyboardMarkup()
     for p in pfx:
         name, flag = db.get_country_info(p)
-        mk.add(types.InlineKeyboardButton(f"{flag} {name}", callback_data=f"delc_{p}"))
+        display = f"{flag} {name}" if flag else name
+        mk.add(types.InlineKeyboardButton(display, callback_data=f"delc_{p}"))
     mk.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_back"))
     bot.edit_message_text(t("admin_del_prefix", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=mk)
 
