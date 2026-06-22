@@ -1,24 +1,17 @@
 # -*- coding: utf-8 -*-
-"""
- ╔══════════════════════════════════════════════╗
- ║       TAKER OTP BOT - Ultimate Edition      ║
- ║       Developer: @hackerTaker               ║
- ║       API: xwdsms.org (Full Integration)     ║
- ╚══════════════════════════════════════════════╝
-"""
 import time, requests, re, os, sqlite3, threading, logging
 from datetime import datetime
 from telebot import types
 import telebot
 from flask import Flask, jsonify
 
-# ════════════════ الإعدادات الأساسية ════════════════
+# ════════════════ الإعدادات ════════════════
 BOT_TOKEN = "8686995713:AAESbzEIEnCf1Rbct1hy5FlNS0SgnHmuppk"
 API_KEY = "4886d4297bcfb669bf3b3d2d8d1c4ee2"
 BASE_URL = "http://xwdsms.org"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
-DB_PATH = "taker_ultimate.db"
+DB_PATH = "taker_pro.db"
 DELETE_AFTER = 180  # حذف رسائل الجروب بعد 3 دقائق
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -119,8 +112,8 @@ TEXTS = {
     "admin_panel": {"ar": "*⚙️ لوحة التحكم*", "en": "*⚙️ Admin Panel*"},
     "admin_add_prefix": {"ar": "*➕ أرسل كود الدولة*\nمثال: `22501`", "en": "*➕ Send country code*\nExample: `22501`"},
     "admin_del_prefix": {"ar": "*اختر الدولة للحذف:*", "en": "*Select country to delete:*"},
-    "admin_broadcast_all": {"ar": "*📢 أرسل الرسالة للإذاعة للجميع:*", "en": "*📢 Send message to broadcast:*"},
-    "admin_broadcast_user": {"ar": "*📨 أرسل ID المستخدم للإذاعة:*", "en": "*📨 Send user ID:*"},
+    "admin_broadcast_all": {"ar": "*📢 أرسل الرسالة للإذاعة للجميع:*", "en": "*📢 Send message to broadcast to all:*"},
+    "admin_broadcast_user": {"ar": "*📨 أرسل ID المستخدم للإذاعة:*", "en": "*📨 Send user ID for broadcast:*"},
     "admin_ban": {"ar": "*🚫 أرسل ID المستخدم للحظر:*", "en": "*🚫 Send user ID to ban:*"},
     "admin_unban": {"ar": "*✅ أرسل ID المستخدم لفك الحظر:*", "en": "*✅ Send user ID to unban:*"},
     "admin_user_info": {"ar": "*👤 أرسل ID المستخدم:*", "en": "*👤 Send user ID:*"},
@@ -606,7 +599,7 @@ def universal_handler(message):
         del admin_states[uid]
         return
 
-    # زر تغيير اللغة – تحديث الواجهة بالكامل
+    # زر تغيير اللغة
     if txt in [btn("lang", uid)]:
         current_lang = db.get_user(uid)[3] if db.get_user(uid) else "ar"
         new_lang = "en" if current_lang == "ar" else "ar"
