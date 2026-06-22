@@ -1,18 +1,25 @@
 # -*- coding: utf-8 -*-
-import time, requests, re, os, sqlite3, threading, logging
+"""
+ ╔══════════════════════════════════════════════╗
+ ║       TAKER OTP BOT - Professional          ║
+ ║       Developer: @hackerTaker               ║
+ ║       API: xwdsms.org (Full Integration)     ║
+ ╚══════════════════════════════════════════════╝
+"""
+import time, requests, json, re, os, sqlite3, threading, logging
 from datetime import datetime
 from telebot import types
 import telebot
 from flask import Flask, jsonify
 
-# ════════════════ الإعدادات ════════════════
+# ════════════════ الإعدادات الأساسية ════════════════
 BOT_TOKEN = "8686995713:AAG6fy9oZlGIn8SvnQUY_zMq_Eeo6OJYqRY"
 API_KEY = "4886d4297bcfb669bf3b3d2d8d1c4ee2"
 BASE_URL = "http://xwdsms.org"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
-DB_PATH = "taker_pro.db"
-DELETE_AFTER = 180  # ثواني
+DB_PATH = "taker_final.db"
+DELETE_AFTER = 180  # حذف رسائل الجروب بعد 3 دقائق
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -340,7 +347,8 @@ def delete_later(cid, mid, delay=180):
 # ════════════════ بوت تيليجرام ════════════════
 bot = telebot.TeleBot(BOT_TOKEN)
 
-user_state = {}
+# حالات المستخدم للإدارة (نفس النظام الناجح)
+user_states = {}
 
 def main_kb(uid):
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
@@ -455,197 +463,252 @@ def menu_back(call):
         except: pass
         show_home(cid, uid)
 
-# ════════════════ معالجة الأزرار والحالات (كل شيء في handler واحد) ════════════════
-@bot.message_handler(func=lambda m: True)
-def universal_handler(message):
-    uid = message.from_user.id
-    cid = message.chat.id
-    txt = message.text
-
-    # --- حالات الإدارة الخاصة ---
-    state = user_state.get(uid)
-    if state == "add_prefix":
-        prefix = txt.strip()
+# ════════════════ handlers الإدارة (باستخدام user_states الناجح) ════════════════
+@bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "add_prefix")
+def add_prefix_handler(message):
+    """تخزين الـ prefix ثم طلب الاسم"""
+    prefix = message.text.strip()
+    # التعرف التلقائي على الدولة
+    country = db.get_country_from_prefix(prefix)
+    if country:
+        name, flag = country
+        # نضيفها مباشرة دون طلب اسم (اختصار احترافي)
         status, name, flag = db.add_prefix(prefix)
         if status == "added":
-            bot.send_message(cid, t("prefix_added", uid, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
+            bot.send_message(message.chat.id, t("prefix_added", message.from_user.id, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
         elif status == "exists":
-            bot.send_message(cid, t("prefix_exists", uid, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
+            bot.send_message(message.chat.id, t("prefix_exists", message.from_user.id, flag=flag, name=name, prefix=prefix), parse_mode="Markdown")
         else:
-            bot.send_message(cid, t("prefix_not_found", uid, prefix=prefix), parse_mode="Markdown")
-        user_state.pop(uid, None)
-        return
+            bot.send_message(message.chat.id, t("prefix_not_found", message.from_user.id, prefix=prefix), parse_mode="Markdown")
+        del user_states[message.from_user.id]
+    else:
+        # لو لم يتم التعرف، نطلب الاسم يدوياً (للحالات الخاصة)
+        user_states[message.from_user.id] = ("add_name", prefix)
+        bot.send_message(message.chat.id, "لم يتم التعرف على الدولة تلقائياً. أرسل اسم الدولة:")
 
-    if state == "broadcast":
-        users = db.all_users()
-        cnt = 0
-        for u in users:
-            try:
-                bot.copy_message(u, cid, message.message_id)
-                cnt += 1
-                time.sleep(0.03)
-            except: pass
-        bot.send_message(cid, t("admin_broadcast_done", uid, cnt=cnt), parse_mode="Markdown")
-        user_state.pop(uid, None)
-        return
+@bot.message_handler(func=lambda m: isinstance(user_states.get(m.from_user.id), tuple) and user_states[m.from_user.id][0] == "add_name")
+def add_name_handler(message):
+    prefix = user_states[message.from_user.id][1]
+    name = message.text.strip()
+    db.add_country(prefix, name)  # دالة مخصصة للإضافة اليدوية
+    bot.send_message(message.chat.id, f"✅ تمت إضافة {name} (`{prefix}`)", parse_mode="Markdown")
+    del user_states[message.from_user.id]
 
-    if state == "ban":
+# دالة الإضافة اليدوية (للحالات التي لا تتعرف تلقائياً)
+def add_country_manually(prefix, name):
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO custom_prefixes VALUES (?,?)", (prefix, name))
+        conn.commit()
+
+# handlers الأخرى للإدارة
+@bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "broadcast")
+def broadcast_exec(message):
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("SELECT user_id FROM users WHERE is_banned=0")
+        users = [r[0] for r in c.fetchall()]
+    cnt = 0
+    for u in users:
         try:
-            target = int(txt)
-            db.conn.cursor().execute("UPDATE users SET is_banned=1 WHERE user_id=?", (target,))
-            db.conn.commit()
-            bot.send_message(cid, t("admin_done", uid), parse_mode="Markdown")
-        except: bot.send_message(cid, "❌ خطأ")
-        user_state.pop(uid, None)
-        return
+            bot.copy_message(u, message.chat.id, message.message_id)
+            cnt += 1
+            time.sleep(0.03)
+        except:
+            pass
+    bot.send_message(message.chat.id, t("admin_broadcast_done", message.from_user.id, cnt=cnt), parse_mode="Markdown")
+    del user_states[message.from_user.id]
 
-    if state == "unban":
-        try:
-            target = int(txt)
-            db.conn.cursor().execute("UPDATE users SET is_banned=0 WHERE user_id=?", (target,))
-            db.conn.commit()
-            bot.send_message(cid, t("admin_done", uid), parse_mode="Markdown")
-        except: bot.send_message(cid, "❌ خطأ")
-        user_state.pop(uid, None)
-        return
+@bot.message_handler(func=lambda m: user_states.get(m.from_user.id) in ["ban", "unban"])
+def ban_unban_exec(message):
+    action = user_states[message.from_user.id]
+    try:
+        uid = int(message.text)
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute(f"UPDATE users SET is_banned={'1' if action=='ban' else '0'} WHERE user_id=?", (uid,))
+            conn.commit()
+        bot.send_message(message.chat.id, t("admin_done", message.from_user.id), parse_mode="Markdown")
+    except:
+        bot.send_message(message.chat.id, "❌ خطأ")
+    del user_states[message.from_user.id]
 
-    if state == "add_channel_url":
-        user_state[uid] = ("add_channel_desc", txt.strip())
-        bot.send_message(cid, "أرسل وصفاً:")
-        return
+@bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "addch_url")
+def addch_url_handler(message):
+    user_states[message.from_user.id] = ("addch_desc", message.text.strip())
+    bot.send_message(message.chat.id, "أرسل وصفاً:")
 
-    if isinstance(state, tuple) and state[0] == "add_channel_desc":
-        url = state[1]
-        desc = txt.strip()
-        db.conn.cursor().execute("INSERT OR IGNORE INTO force_channels (channel_url, description) VALUES (?,?)", (url, desc))
-        db.conn.commit()
-        bot.send_message(cid, "✅ تمت الإضافة")
-        user_state.pop(uid, None)
-        return
+@bot.message_handler(func=lambda m: isinstance(user_states.get(m.from_user.id), tuple) and user_states[m.from_user.id][0] == "addch_desc")
+def addch_desc_handler(message):
+    url = user_states[message.from_user.id][1]
+    desc = message.text.strip()
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO force_channels (channel_url, description) VALUES (?,?)", (url, desc))
+        conn.commit()
+    bot.send_message(message.chat.id, "✅ تمت الإضافة")
+    del user_states[message.from_user.id]
 
-    # --- الأزرار العادية ---
-    if txt == btn("new_num", uid):
-        bot.send_message(cid, t("choose_country", uid), parse_mode="Markdown", reply_markup=countries_menu())
-    elif txt == btn("countries", uid):
+@bot.message_handler(content_types=['photo'], func=lambda m: user_states.get(m.from_user.id) == "photo")
+def save_photo_handler(message):
+    db.setting("welcome_photo", message.photo[-1].file_id)
+    bot.send_message(message.chat.id, "✅ تم حفظ الصورة")
+    del user_states[message.from_user.id]
+
+# ════════════════ الأزرار العادية ════════════════
+@bot.message_handler(func=lambda m: m.text in [
+    "📱 رقم جديد", "🌍 الدول", "📊 إحصائياتي",
+    "💰 رصيدي", "🤝 دعوة", "🟢 المرور",
+    "📱 New Number", "🌍 Countries", "📊 My Stats",
+    "💰 Balance", "🤝 Invite", "🟢 Traffic",
+    "🌐 اللغة", "🌐 Language",
+    "⚙️ الإدارة", "⚙️ Admin"
+])
+def handle_buttons(message):
+    uid = message.from_user.id
+    txt = message.text
+
+    # نتعامل مع الأزرار بالعربي والإنجليزي عبر btn()
+    if txt in [btn("new_num", uid)]:
+        bot.send_message(message.chat.id, t("choose_country", uid), parse_mode="Markdown", reply_markup=countries_menu())
+    elif txt in [btn("countries", uid)]:
         pfx = db.prefixes()
         msg = t("countries_list", uid) + "\n".join(f"{db.get_country_info(p)[1]} {p}" for p in pfx)
-        bot.send_message(cid, msg, parse_mode="Markdown")
-    elif txt == btn("stats", uid):
+        bot.send_message(message.chat.id, msg, parse_mode="Markdown")
+    elif txt in [btn("stats", uid)]:
         u = db.get_user(uid)
-        bot.send_message(cid, t("stats", uid, req=u[6] if u else 0, otp=u[7] if u else 0), parse_mode="Markdown")
-    elif txt == btn("balance", uid):
+        bot.send_message(message.chat.id, t("stats", uid, req=u[6] if u else 0, otp=u[7] if u else 0), parse_mode="Markdown")
+    elif txt in [btn("balance", uid)]:
         u = db.get_user(uid)
         ref = db.conn.cursor().execute("SELECT ref_count FROM referrals WHERE user_id=?", (uid,)).fetchone()
-        bot.send_message(cid, t("balance", uid, bal=u[4] if u else 0, ref=ref[0] if ref else 0, site=api.balance()), parse_mode="Markdown")
-    elif txt == btn("invite", uid):
+        bot.send_message(message.chat.id, t("balance", uid, bal=u[4] if u else 0, ref=ref[0] if ref else 0, site=api.balance()), parse_mode="Markdown")
+    elif txt in [btn("invite", uid)]:
         c = db.conn.cursor()
         rc = f"ref{uid}"
         c.execute("INSERT OR IGNORE INTO referrals VALUES (?,?,0)", (uid, rc))
         db.conn.commit()
-        bot.send_message(cid, t("invite", uid, link=f"https://t.me/Taker_OTP_BOT?start={rc}"), parse_mode="Markdown")
-    elif txt == btn("traffic", uid):
+        bot.send_message(message.chat.id, t("invite", uid, link=f"https://t.me/Taker_OTP_BOT?start={rc}"), parse_mode="Markdown")
+    elif txt in [btn("traffic", uid)]:
         rows = db.conn.cursor().execute("SELECT prefix, COUNT(*) FROM active_numbers WHERE status='waiting' GROUP BY prefix ORDER BY COUNT(*) DESC LIMIT 10").fetchall()
-        if not rows: bot.send_message(cid, t("no_active", uid), parse_mode="Markdown")
+        if not rows: bot.send_message(message.chat.id, t("no_active", uid), parse_mode="Markdown")
         else:
             lines = [t("traffic_title", uid), ""] + [f"{db.get_country_info(p)[1]} {db.get_country_info(p)[0]}: `{cnt}`" for p, cnt in rows]
-            bot.send_message(cid, "\n".join(lines), parse_mode="Markdown")
-    elif txt == btn("lang", uid):
-        bot.send_message(cid, t("lang_select", uid), parse_mode="Markdown", reply_markup=lang_markup())
-    elif txt == btn("admin", uid) and uid in ADMIN_IDS:
-        admin_panel(cid, uid)
+            bot.send_message(message.chat.id, "\n".join(lines), parse_mode="Markdown")
+    elif txt in [btn("lang", uid)]:
+        bot.send_message(message.chat.id, t("lang_select", uid), parse_mode="Markdown", reply_markup=lang_markup())
+    elif txt in [btn("admin", uid)] and uid in ADMIN_IDS:
+        admin_panel(message)
 
 # ════════════════ لوحة الإدارة (callbacks) ════════════════
-def admin_panel(cid, uid):
+def admin_panel(message):
+    uid = message.from_user.id
+    cid = message.chat.id
     mk = types.InlineKeyboardMarkup(row_width=2)
     st = "🟢 مفتوح" if db.setting("maintenance")!="1" else "🔴 صيانة"
-    mk.add(types.InlineKeyboardButton(f"الحالة: {st}", callback_data="tog"))
-    mk.add(types.InlineKeyboardButton("➕ إضافة دولة", callback_data="addp"),
-           types.InlineKeyboardButton("➖ حذف دولة", callback_data="delp"))
-    mk.add(types.InlineKeyboardButton("📢 إذاعة", callback_data="bcast"),
+    mk.add(types.InlineKeyboardButton(f"الحالة: {st}", callback_data="tog_maint"))
+    mk.add(types.InlineKeyboardButton("➕ إضافة دولة", callback_data="add_country"),
+           types.InlineKeyboardButton("➖ حذف دولة", callback_data="del_country"))
+    mk.add(types.InlineKeyboardButton("📢 إذاعة", callback_data="broadcast"),
            types.InlineKeyboardButton("🚫 حظر", callback_data="ban"))
     mk.add(types.InlineKeyboardButton("✅ فك حظر", callback_data="unban"),
-           types.InlineKeyboardButton("🔗 اشتراك", callback_data="fsub"))
-    mk.add(types.InlineKeyboardButton("🖼️ صورة", callback_data="photo"),
-           types.InlineKeyboardButton("🗑️ مسح", callback_data="clear"))
+           types.InlineKeyboardButton("🔗 اشتراك", callback_data="force_sub"))
+    mk.add(types.InlineKeyboardButton("🖼️ صورة", callback_data="set_photo"),
+           types.InlineKeyboardButton("🗑️ مسح", callback_data="clear_data"))
     mk.add(types.InlineKeyboardButton("↩️ خروج", callback_data="menu_main"))
     bot.send_message(cid, t("admin_panel", uid), parse_mode="Markdown", reply_markup=mk)
 
-@bot.callback_query_handler(func=lambda c: c.data=="tog")
-def tog(call): db.setting("maintenance","0" if db.setting("maintenance")=="1" else "1"); bot.answer_callback_query(call.id,"✅"); admin_panel(call.message.chat.id, call.from_user.id)
+@bot.callback_query_handler(func=lambda c: c.data == "tog_maint")
+def tog_maint(call):
+    cur = db.setting("maintenance") == "1"
+    db.setting("maintenance", "0" if cur else "1")
+    bot.answer_callback_query(call.id, "تم")
+    admin_panel(call.message)
 
-@bot.callback_query_handler(func=lambda c: c.data=="addp")
-def addp(call):
+@bot.callback_query_handler(func=lambda c: c.data == "add_country")
+def add_country_cb(call):
+    user_states[call.from_user.id] = "add_prefix"
+    bot.edit_message_text(t("admin_add_prefix", call.from_user.id), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda c: c.data == "del_country")
+def del_country_cb(call):
     uid = call.from_user.id
-    user_state[uid] = "add_prefix"
-    bot.edit_message_text(t("admin_add_prefix", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-
-@bot.callback_query_handler(func=lambda c: c.data=="delp")
-def delp(call):
-    uid=call.from_user.id; pfx=db.prefixes()
-    if not pfx: bot.answer_callback_query(call.id,"لا توجد دول", show_alert=True); return
-    mk=types.InlineKeyboardMarkup()
+    pfx = db.prefixes()
+    if not pfx: bot.answer_callback_query(call.id, "لا توجد دول", show_alert=True); return
+    mk = types.InlineKeyboardMarkup()
     for p in pfx:
         name, flag = db.get_country_info(p)
-        mk.add(types.InlineKeyboardButton(f"{flag} {name}", callback_data=f"delpp_{p}"))
-    mk.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admback"))
+        mk.add(types.InlineKeyboardButton(f"{flag} {name}", callback_data=f"delc_{p}"))
+    mk.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_back"))
     bot.edit_message_text(t("admin_del_prefix", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=mk)
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("delpp_"))
-def delpp(call): db.remove_prefix(call.data.split("_")[1]); bot.answer_callback_query(call.id,"✅ تم الحذف"); admin_panel(call.message.chat.id, call.from_user.id)
+@bot.callback_query_handler(func=lambda c: c.data.startswith("delc_"))
+def delc(call):
+    prefix = call.data.split("_")[1]
+    db.remove_prefix(prefix)
+    bot.answer_callback_query(call.id, t("prefix_removed", call.from_user.id))
+    admin_panel(call.message)
 
-@bot.callback_query_handler(func=lambda c: c.data=="bcast")
-def bcast(call):
-    uid = call.from_user.id
-    user_state[uid] = "broadcast"
-    bot.edit_message_text(t("admin_broadcast", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+@bot.callback_query_handler(func=lambda c: c.data == "broadcast")
+def broadcast_cb(call):
+    user_states[call.from_user.id] = "broadcast"
+    bot.edit_message_text(t("admin_broadcast", call.from_user.id), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
-@bot.callback_query_handler(func=lambda c: c.data=="ban")
-def ban_p(call):
-    uid = call.from_user.id
-    user_state[uid] = "ban"
-    bot.edit_message_text(t("admin_ban", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+@bot.callback_query_handler(func=lambda c: c.data == "ban")
+def ban_cb(call):
+    user_states[call.from_user.id] = "ban"
+    bot.edit_message_text(t("admin_ban", call.from_user.id), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
-@bot.callback_query_handler(func=lambda c: c.data=="unban")
-def unban_p(call):
-    uid = call.from_user.id
-    user_state[uid] = "unban"
-    bot.edit_message_text(t("admin_unban", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+@bot.callback_query_handler(func=lambda c: c.data == "unban")
+def unban_cb(call):
+    user_states[call.from_user.id] = "unban"
+    bot.edit_message_text(t("admin_unban", call.from_user.id), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
-@bot.callback_query_handler(func=lambda c: c.data=="fsub")
-def fsub(call):
-    uid=call.from_user.id; chs=db.conn.cursor().execute("SELECT * FROM force_channels WHERE enabled=1").fetchall()
-    mk=types.InlineKeyboardMarkup(); [mk.add(types.InlineKeyboardButton(f"{'✅' if ch[4] else '❌'} {ch[2]}", callback_data=f"edch_{ch[0]}")) for ch in chs]
-    mk.add(types.InlineKeyboardButton("➕ إضافة", callback_data="addch"), types.InlineKeyboardButton("🔙 رجوع", callback_data="admback"))
+@bot.callback_query_handler(func=lambda c: c.data == "force_sub")
+def force_sub_cb(call):
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("SELECT * FROM force_channels WHERE enabled=1")
+        chs = c.fetchall()
+    mk = types.InlineKeyboardMarkup()
+    for ch in chs:
+        st = "✅" if ch[4] else "❌"
+        mk.add(types.InlineKeyboardButton(f"{st} {ch[2]}", callback_data=f"edch_{ch[0]}"))
+    mk.add(types.InlineKeyboardButton("➕ إضافة", callback_data="addch"))
+    mk.add(types.InlineKeyboardButton("🔙", callback_data="admin_back"))
     bot.edit_message_text("*🔗 قنوات الاشتراك*", call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=mk)
 
-@bot.callback_query_handler(func=lambda c: c.data=="addch")
-def addch(call):
-    uid = call.from_user.id
-    user_state[uid] = "add_channel_url"
+@bot.callback_query_handler(func=lambda c: c.data == "addch")
+def addch_cb(call):
+    user_states[call.from_user.id] = "addch_url"
     bot.edit_message_text("*أرسل رابط القناة:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("edch_"))
-def edch(call): db.conn.cursor().execute("UPDATE force_channels SET enabled=1-enabled WHERE id=?", (int(call.data.split("_")[1]),)); db.conn.commit(); fsub(call)
+def edch_cb(call):
+    ch_id = int(call.data.split("_")[1])
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("UPDATE force_channels SET enabled=1-enabled WHERE id=?", (ch_id,))
+        conn.commit()
+    force_sub_cb(call)
 
-@bot.callback_query_handler(func=lambda c: c.data=="photo")
-def photo(call):
-    uid = call.from_user.id
-    user_state[uid] = "photo"
+@bot.callback_query_handler(func=lambda c: c.data == "set_photo")
+def set_photo_cb(call):
+    user_states[call.from_user.id] = "photo"
     bot.edit_message_text("*أرسل الصورة:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
-@bot.message_handler(content_types=['photo'])
-def process_photo(msg):
-    if not (msg.from_user.id in ADMIN_IDS): return
-    if user_state.get(msg.from_user.id) == "photo":
-        db.setting("welcome_photo", msg.photo[-1].file_id)
-        bot.send_message(msg.chat.id, "✅ تم حفظ الصورة")
-        user_state.pop(msg.from_user.id, None)
+@bot.callback_query_handler(func=lambda c: c.data == "clear_data")
+def clear_data_cb(call):
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        for t in ["users", "active_numbers", "otp_logs", "referrals"]:
+            c.execute(f"DELETE FROM {t}")
+        conn.commit()
+    bot.answer_callback_query(call.id, "✅ تم مسح البيانات")
+    admin_panel(call.message)
 
-@bot.callback_query_handler(func=lambda c: c.data=="clear")
-def clear(call): [db.conn.cursor().execute(f"DELETE FROM {t}") for t in ["users","active_numbers","otp_logs","referrals"]]; db.conn.commit(); bot.answer_callback_query(call.id,"✅ تم مسح البيانات"); admin_panel(call.message.chat.id, call.from_user.id)
-
-@bot.callback_query_handler(func=lambda c: c.data=="admback")
-def admback(call): admin_panel(call.message.chat.id, call.from_user.id)
+@bot.callback_query_handler(func=lambda c: c.data == "admin_back")
+def admin_back_cb(call):
+    admin_panel(call.message)
 
 # ════════════════ حلقة فحص OTP ════════════════
 def otp_loop():
