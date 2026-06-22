@@ -5,7 +5,7 @@ from telebot import types
 import telebot
 from flask import Flask, jsonify
 
-# ════════════════ الإعدادات ════════════════
+# ════════════════ إعدادات ════════════════
 BOT_TOKEN = "8686995713:AAG6fy9oZlGIn8SvnQUY_zMq_Eeo6OJYqRY"
 API_KEY = "4886d4297bcfb669bf3b3d2d8d1c4ee2"
 BASE_URL = "http://xwdsms.org"
@@ -17,7 +17,7 @@ DELETE_AFTER = 180
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ════════════════ قاعدة بيانات الدول العالمية (للتعرف على الاسم والعلم) ════════════════
+# ════════════════ جميع دول العالم ════════════════
 ALL_COUNTRIES = {
     "1": ("USA", "🇺🇸"), "7": ("Russia", "🇷🇺"), "20": ("Egypt", "🇪🇬"),
     "27": ("South Africa", "🇿🇦"), "30": ("Greece", "🇬🇷"), "31": ("Netherlands", "🇳🇱"),
@@ -89,7 +89,7 @@ DEFAULT_PREFIXES = [
     "24910", "49155", "23762", "22178", "22901", "22898",
 ]
 
-# ════════════════ الترجمة ════════════════
+# ════════════════ نصوص ════════════════
 TEXTS = {
     "lang_select": {"ar": "🌐 *اختر لغتك*", "en": "🌐 *Select Language*"},
     "welcome": {"ar": "🔰 *أهلاً بك في Taker OTP*\n\n• أرقام وهمية للتفعيل\n• أكواد فورية\n\n*اختر الدولة:*", "en": "🔰 *Welcome to Taker OTP*\n\n• Virtual numbers\n• Instant codes\n\n*Select country:*"},
@@ -188,7 +188,6 @@ class Database:
         return [r[0] for r in self.conn.cursor().execute("SELECT prefix FROM active_prefixes ORDER BY prefix").fetchall()]
 
     def add_prefix(self, p):
-        """إضافة prefix جديد بعد التحقق من وجوده في ALL_COUNTRIES"""
         if p not in ALL_COUNTRIES:
             return "not_found"
         c = self.conn.cursor()
@@ -361,7 +360,7 @@ def show_home(cid, uid):
     else: bot.send_message(cid, txt, parse_mode="Markdown", reply_markup=mk)
     bot.send_message(cid, "• • •", reply_markup=main_kb(uid))
 
-# ════════════════ أوامر البوت ════════════════
+# ════════════════ أوامر ════════════════
 @bot.message_handler(commands=['start'])
 def start(msg):
     uid, cid = msg.from_user.id, msg.chat.id
@@ -436,7 +435,73 @@ def menu_back(call):
         except: pass
         show_home(cid, uid)
 
-# ════════════════ الكيبورد العام (يأتي بعد handlers المحددة) ════════════════
+# ════════════════ حالات المستخدم (للإدارة) ════════════════
+user_states = {}
+
+# Handlers الإدارة – يجب أن تسبق الـ handler العام
+@bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "addp")
+def addp_exe(msg):
+    uid, p = msg.from_user.id, msg.text.strip()
+    result = db.add_prefix(p)
+    if result == "added":
+        n, f = cinfo(p)
+        bot.send_message(msg.chat.id, t("prefix_added", uid, flag=f, name=n, prefix=p), parse_mode="Markdown")
+    elif result == "exists":
+        n, f = cinfo(p)
+        bot.send_message(msg.chat.id, t("prefix_exists", uid, flag=f, name=n, prefix=p), parse_mode="Markdown")
+    else:
+        bot.send_message(msg.chat.id, t("prefix_not_found", uid, prefix=p), parse_mode="Markdown")
+    del user_states[uid]
+
+@bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "bcast")
+def bcast_exe(msg):
+    uid = msg.from_user.id
+    users = db.all_users()
+    cnt = 0
+    for u in users:
+        try:
+            bot.copy_message(u, msg.chat.id, msg.message_id)
+            cnt += 1
+            time.sleep(0.03)
+        except: pass
+    bot.send_message(msg.chat.id, t("admin_broadcast_done", uid, cnt=cnt), parse_mode="Markdown")
+    del user_states[uid]
+
+@bot.message_handler(func=lambda m: user_states.get(m.from_user.id) in ["ban","unban"])
+def ban_unban_exe(msg):
+    uid = msg.from_user.id
+    act = user_states[uid]
+    try:
+        target = int(msg.text)
+        c = db.conn.cursor()
+        c.execute(f"UPDATE users SET is_banned={'1' if act=='ban' else '0'} WHERE user_id=?", (target,))
+        db.conn.commit()
+        bot.send_message(msg.chat.id, t("admin_done", uid), parse_mode="Markdown")
+    except: bot.send_message(msg.chat.id, "❌ خطأ")
+    del user_states[uid]
+
+@bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == "addch_url")
+def addch_url_exe(msg):
+    user_states[msg.from_user.id] = ("addch_desc", msg.text.strip())
+    bot.send_message(msg.chat.id, "أرسل وصفاً:")
+
+@bot.message_handler(func=lambda m: isinstance(user_states.get(m.from_user.id), tuple) and user_states[m.from_user.id][0] == "addch_desc")
+def addch_desc_exe(msg):
+    url = user_states[msg.from_user.id][1]
+    desc = msg.text.strip()
+    c = db.conn.cursor()
+    c.execute("INSERT OR IGNORE INTO force_channels (channel_url, description) VALUES (?,?)", (url, desc))
+    db.conn.commit()
+    bot.send_message(msg.chat.id, "✅ تمت الإضافة")
+    del user_states[msg.from_user.id]
+
+@bot.message_handler(content_types=['photo'], func=lambda m: user_states.get(m.from_user.id) == "photo")
+def photo_save(msg):
+    db.setting("welcome_photo", msg.photo[-1].file_id)
+    bot.send_message(msg.chat.id, "✅ تم حفظ الصورة")
+    del user_states[msg.from_user.id]
+
+# ════════════════ الكيبورد العام (يأتي أخيراً) ════════════════
 @bot.message_handler(func=lambda m: True)
 def handle_msg(message):
     uid, cid, txt = message.from_user.id, message.chat.id, message.text
@@ -493,20 +558,8 @@ def tog(call): db.setting("maintenance","0" if db.setting("maintenance")=="1" el
 @bot.callback_query_handler(func=lambda c: c.data=="addp")
 def addp(call):
     uid = call.from_user.id
-    msg = bot.edit_message_text(t("admin_add_prefix", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-    bot.register_next_step_handler(msg, process_add_prefix)
-
-def process_add_prefix(msg):
-    uid, p = msg.from_user.id, msg.text.strip()
-    result = db.add_prefix(p)
-    if result == "added":
-        n, f = cinfo(p)
-        bot.send_message(msg.chat.id, t("prefix_added", uid, flag=f, name=n, prefix=p), parse_mode="Markdown")
-    elif result == "exists":
-        n, f = cinfo(p)
-        bot.send_message(msg.chat.id, t("prefix_exists", uid, flag=f, name=n, prefix=p), parse_mode="Markdown")
-    else:
-        bot.send_message(msg.chat.id, t("prefix_not_found", uid, prefix=p), parse_mode="Markdown")
+    user_states[uid] = "addp"
+    bot.edit_message_text(t("admin_add_prefix", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda c: c.data=="delp")
 def delp(call):
@@ -522,50 +575,20 @@ def delpp(call): db.remove_prefix(call.data.split("_")[1]); bot.answer_callback_
 @bot.callback_query_handler(func=lambda c: c.data=="bcast")
 def bcast(call):
     uid = call.from_user.id
-    msg = bot.edit_message_text(t("admin_broadcast", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-    bot.register_next_step_handler(msg, process_broadcast)
-
-def process_broadcast(msg):
-    uid = msg.from_user.id
-    users = db.all_users()
-    cnt = 0
-    for u in users:
-        try:
-            bot.copy_message(u, msg.chat.id, msg.message_id)
-            cnt += 1
-            time.sleep(0.03)
-        except: pass
-    bot.send_message(msg.chat.id, t("admin_broadcast_done", uid, cnt=cnt), parse_mode="Markdown")
+    user_states[uid] = "bcast"
+    bot.edit_message_text(t("admin_broadcast", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda c: c.data=="ban")
 def ban_p(call):
     uid = call.from_user.id
-    msg = bot.edit_message_text(t("admin_ban", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-    bot.register_next_step_handler(msg, process_ban)
-
-def process_ban(msg):
-    uid = msg.from_user.id
-    try:
-        target = int(msg.text)
-        db.conn.cursor().execute("UPDATE users SET is_banned=1 WHERE user_id=?", (target,))
-        db.conn.commit()
-        bot.send_message(msg.chat.id, t("admin_done", uid), parse_mode="Markdown")
-    except: bot.send_message(msg.chat.id, "❌ خطأ")
+    user_states[uid] = "ban"
+    bot.edit_message_text(t("admin_ban", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda c: c.data=="unban")
 def unban_p(call):
     uid = call.from_user.id
-    msg = bot.edit_message_text(t("admin_unban", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-    bot.register_next_step_handler(msg, process_unban)
-
-def process_unban(msg):
-    uid = msg.from_user.id
-    try:
-        target = int(msg.text)
-        db.conn.cursor().execute("UPDATE users SET is_banned=0 WHERE user_id=?", (target,))
-        db.conn.commit()
-        bot.send_message(msg.chat.id, t("admin_done", uid), parse_mode="Markdown")
-    except: bot.send_message(msg.chat.id, "❌ خطأ")
+    user_states[uid] = "unban"
+    bot.edit_message_text(t("admin_unban", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda c: c.data=="fsub")
 def fsub(call):
@@ -577,20 +600,8 @@ def fsub(call):
 @bot.callback_query_handler(func=lambda c: c.data=="addch")
 def addch(call):
     uid = call.from_user.id
-    msg = bot.edit_message_text("*أرسل رابط القناة:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-    bot.register_next_step_handler(msg, process_addch_url)
-
-def process_addch_url(msg):
-    uid = msg.from_user.id
-    url = msg.text.strip()
-    msg2 = bot.send_message(msg.chat.id, "أرسل وصفاً:")
-    bot.register_next_step_handler(msg2, process_addch_desc, url)
-
-def process_addch_desc(msg, url):
-    desc = msg.text.strip()
-    db.conn.cursor().execute("INSERT OR IGNORE INTO force_channels (channel_url, description) VALUES (?,?)", (url, desc))
-    db.conn.commit()
-    bot.send_message(msg.chat.id, "✅ تمت الإضافة")
+    user_states[uid] = "addch_url"
+    bot.edit_message_text("*أرسل رابط القناة:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("edch_"))
 def edch(call): db.conn.cursor().execute("UPDATE force_channels SET enabled=1-enabled WHERE id=?", (int(call.data.split("_")[1]),)); db.conn.commit(); fsub(call)
@@ -598,14 +609,8 @@ def edch(call): db.conn.cursor().execute("UPDATE force_channels SET enabled=1-en
 @bot.callback_query_handler(func=lambda c: c.data=="photo")
 def photo(call):
     uid = call.from_user.id
-    msg = bot.edit_message_text("*أرسل الصورة:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-    bot.register_next_step_handler(msg, process_photo)
-
-@bot.message_handler(content_types=['photo'])
-def process_photo(msg):
-    if not (msg.from_user.id in ADMIN_IDS): return
-    db.setting("welcome_photo", msg.photo[-1].file_id)
-    bot.send_message(msg.chat.id, "✅ تم حفظ الصورة")
+    user_states[uid] = "photo"
+    bot.edit_message_text("*أرسل الصورة:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda c: c.data=="clear")
 def clear(call): [db.conn.cursor().execute(f"DELETE FROM {t}") for t in ["users","active_numbers","otp_logs","referrals"]]; db.conn.commit(); bot.answer_callback_query(call.id,"✅ تم مسح البيانات"); admin_panel(call.message.chat.id, call.from_user.id)
@@ -613,7 +618,7 @@ def clear(call): [db.conn.cursor().execute(f"DELETE FROM {t}") for t in ["users"
 @bot.callback_query_handler(func=lambda c: c.data=="admback")
 def admback(call): admin_panel(call.message.chat.id, call.from_user.id)
 
-# ════════════════ حلقة فحص OTP ════════════════
+# ════════════════ OTP Loop ════════════════
 def otp_loop():
     while True:
         try:
@@ -649,5 +654,5 @@ def run_web(): app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 if __name__ == "__main__":
     threading.Thread(target=run_web, daemon=True).start()
     threading.Thread(target=otp_loop, daemon=True).start()
-    logger.info("✅ Taker OTP Bot Started")
+    logger.info("✅ Bot started")
     bot.infinity_polling()
