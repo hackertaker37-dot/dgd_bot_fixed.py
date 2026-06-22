@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
- ╔══════════════════════════════════════════╗
- ║       TAKER OTP BOT - Professional      ║
- ║       Developer: @hackerTaker           ║
- ║       API: xwdsms.org (Full)            ║
- ╚══════════════════════════════════════════╝
+ ╔══════════════════════════════════════════════╗
+ ║       TAKER OTP BOT - Professional          ║
+ ║       Developer: @hackerTaker               ║
+ ║       API: xwdsms.org (Full Integration)     ║
+ ╚══════════════════════════════════════════════╝
 """
 import time, requests, re, os, sqlite3, threading, logging
 from datetime import datetime
@@ -12,19 +12,19 @@ from telebot import types
 import telebot
 from flask import Flask, jsonify
 
-# ════════════════ إعدادات ════════════════
+# ════════════════ الإعدادات ════════════════
 BOT_TOKEN = "8686995713:AAG6fy9oZlGIn8SvnQUY_zMq_Eeo6OJYqRY"
 API_KEY = "4886d4297bcfb669bf3b3d2d8d1c4ee2"
 BASE_URL = "http://xwdsms.org"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
 DB_PATH = "taker_pro.db"
-DELETE_AFTER = 180
+DELETE_AFTER = 180  # حذف رسائل الجروب بعد 3 دقائق
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ════════════════ جميع الدول ════════════════
+# ════════════════ جميع دول العالم (للتحقق من الكود) ════════════════
 ALL_COUNTRIES = {
     "1": ("USA", "🇺🇸"), "7": ("Russia", "🇷🇺"), "20": ("Egypt", "🇪🇬"),
     "27": ("South Africa", "🇿🇦"), "30": ("Greece", "🇬🇷"), "31": ("Netherlands", "🇳🇱"),
@@ -96,8 +96,8 @@ DEFAULT_PREFIXES = [
     "24910", "49155", "23762", "22178", "22901", "22898",
 ]
 
-# ════════════════ نصوص ════════════════
-T = {
+# ════════════════ نصوص الترجمة ════════════════
+TEXTS = {
     "lang_select": {"ar": "🌐 *اختر لغتك*", "en": "🌐 *Select Language*"},
     "welcome": {"ar": "🔰 *أهلاً بك في Taker OTP*\n\n• أرقام وهمية للتفعيل\n• أكواد فورية\n\n*اختر الدولة:*", "en": "🔰 *Welcome to Taker OTP*\n\n• Virtual numbers\n• Instant codes\n\n*Select country:*"},
     "choose_country": {"ar": "🌍 *اختر الدولة:*", "en": "🌍 *Select country:*"},
@@ -133,7 +133,7 @@ def t(key, uid=None, **kw):
         u = db.get_user(uid)
         if u and u[3]:
             lang = u[3]
-    txt = T.get(key, {}).get(lang, T.get(key, {}).get("ar", key))
+    txt = TEXTS.get(key, {}).get(lang, TEXTS.get(key, {}).get("ar", key))
     return txt.format(**kw) if kw else txt
 
 BTN = {
@@ -326,7 +326,7 @@ def delete_later(cid, mid, delay=180):
     try: bot.delete_message(cid, mid)
     except: pass
 
-# ════════════════ بوت ════════════════
+# ════════════════ بوت تيليجرام ════════════════
 bot = telebot.TeleBot(BOT_TOKEN)
 
 def main_kb(uid):
@@ -367,7 +367,7 @@ def show_home(cid, uid):
     else: bot.send_message(cid, txt, parse_mode="Markdown", reply_markup=mk)
     bot.send_message(cid, "• • •", reply_markup=main_kb(uid))
 
-# ════════════════ أوامر ════════════════
+# ════════════════ أوامر البوت ════════════════
 @bot.message_handler(commands=['start'])
 def start(msg):
     uid, cid = msg.from_user.id, msg.chat.id
@@ -442,7 +442,7 @@ def menu_back(call):
         except: pass
         show_home(cid, uid)
 
-# ════════════════ كيبورد عام ════════════════
+# ════════════════ الكيبورد العام (يأتي بعد handlers المحددة) ════════════════
 @bot.message_handler(func=lambda m: True)
 def handle_msg(message):
     uid, cid, txt = message.from_user.id, message.chat.id, message.text
@@ -477,7 +477,7 @@ def handle_msg(message):
     elif txt == btn("admin", uid) and uid in ADMIN_IDS:
         admin_panel(cid, uid)
 
-# ════════════════ لوحة الإدارة ════════════════
+# ════════════════ لوحة الإدارة (callbacks) ════════════════
 def admin_panel(cid, uid):
     mk = types.InlineKeyboardMarkup(row_width=2)
     st = "🟢 مفتوح" if db.setting("maintenance")!="1" else "🔴 صيانة"
@@ -493,7 +493,6 @@ def admin_panel(cid, uid):
     mk.add(types.InlineKeyboardButton("↩️ خروج", callback_data="menu_main"))
     bot.send_message(cid, t("admin_panel", uid), parse_mode="Markdown", reply_markup=mk)
 
-# ════════════════ Callbacks ════════════════
 @bot.callback_query_handler(func=lambda c: c.data=="tog")
 def tog(call): db.setting("maintenance","0" if db.setting("maintenance")=="1" else "1"); bot.answer_callback_query(call.id,"✅"); admin_panel(call.message.chat.id, call.from_user.id)
 
@@ -620,7 +619,7 @@ def clear(call): [db.conn.cursor().execute(f"DELETE FROM {t}") for t in ["users"
 @bot.callback_query_handler(func=lambda c: c.data=="admback")
 def admback(call): admin_panel(call.message.chat.id, call.from_user.id)
 
-# ════════════════ OTP Loop ════════════════
+# ════════════════ حلقة فحص OTP ════════════════
 def otp_loop():
     while True:
         try:
