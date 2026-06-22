@@ -17,7 +17,7 @@ DELETE_AFTER = 180
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ════════════════ جميع دول العالم ════════════════
+# ════════════════ جميع دول العالم (للتعرف التلقائي) ════════════════
 ALL_COUNTRIES = {
     "1": ("USA", "🇺🇸"), "7": ("Russia", "🇷🇺"), "20": ("Egypt", "🇪🇬"),
     "27": ("South Africa", "🇿🇦"), "30": ("Greece", "🇬🇷"), "31": ("Netherlands", "🇳🇱"),
@@ -91,7 +91,7 @@ DEFAULT_PREFIXES = [
 
 # ════════════════ نصوص الترجمة ════════════════
 TEXTS = {
-    "lang_select": {"ar": "🌐 *اختر لغتك*\n\nاختر اللغة التي تريد استخدام البوت بها:", "en": "🌐 *Select Your Language*\n\nChoose the language you want to use:"},
+    "lang_select": {"ar": "🌐 *اختر لغتك*", "en": "🌐 *Select Language*"},
     "lang_changed": {"ar": "✅ تم تغيير اللغة إلى العربية", "en": "✅ Language changed to English"},
     "welcome": {"ar": "🔰 *أهلاً بك في Taker OTP*\n\n• أرقام وهمية للتفعيل\n• أكواد فورية\n\n*اختر الدولة:*", "en": "🔰 *Welcome to Taker OTP*\n\n• Virtual numbers\n• Instant codes\n\n*Select country:*"},
     "choose_country": {"ar": "🌍 *اختر الدولة:*", "en": "🌍 *Select country:*"},
@@ -116,6 +116,7 @@ TEXTS = {
     "admin_unban": {"ar": "*✅ أرسل ID المستخدم:*", "en": "*✅ Send user ID:*"},
     "admin_done": {"ar": "✅ *تم*", "en": "✅ *Done*"},
     "admin_broadcast_done": {"ar": "✅ *تم الإرسال*\n`{cnt}` مستخدم", "en": "✅ *Sent*\n`{cnt}` users"},
+    "admin_stats": {"ar": "📊 *إحصائيات البوت*\n\n👥 المستخدمين: `{users}`\n📱 الأرقام النشطة: `{active}`\n🔑 إجمالي الأكواد: `{otps}`", "en": "📊 *Bot Stats*\n\n👥 Users: `{users}`\n📱 Active numbers: `{active}`\n🔑 Total OTPs: `{otps}`"},
     "otp_user": {"ar": "*🔐 كود جديد*\n\n🌍 {name} {flag}\n📱 `+{number}`\n🔑 `{code}`\n{icon} {service}", "en": "*🔐 New OTP*\n\n🌍 {name} {flag}\n📱 `+{number}`\n🔑 `{code}`\n{icon} {service}"},
     "otp_group": {"ar": "*🔐 كود جديد*\n\n🌍 {flag} {name} | {icon} {service}\n📱 `{masked}`\n🔑 `{code}`", "en": "*🔐 New OTP*\n\n🌍 {flag} {name} | {icon} {service}\n📱 `{masked}`\n🔑 `{code}`"},
     "countries_list": {"ar": "🌍 *الدول المتاحة:*\n\n", "en": "🌍 *Available Countries:*\n\n"},
@@ -343,27 +344,13 @@ def main_kb(uid):
     if uid in ADMIN_IDS: kb.add(btn("admin", uid))
     return kb
 
-def countries_menu(page=0):
-    """قائمة دول احترافية: 3 أعمدة × 3 صفوف = 9 دول في الصفحة"""
+def countries_menu():
+    """قائمة الدول بشكل 3 أعمدة احترافية (بدون صفحات)"""
     countries = sorted(db.get_countries().items())
-    per_page = 9
-    total_pages = (len(countries) + per_page - 1) // per_page
-    start = page * per_page
-    chunk = countries[start:start+per_page]
-
     mk = types.InlineKeyboardMarkup(row_width=3)
-    btns = [types.InlineKeyboardButton(f"{flag} {prefix}", callback_data=f"get_{prefix}") for prefix, (name, flag) in chunk]
+    btns = [types.InlineKeyboardButton(f"{flag} {prefix}", callback_data=f"get_{prefix}") for prefix, (name, flag) in countries]
     for i in range(0, len(btns), 3):
         mk.row(*btns[i:i+3])
-
-    # أزرار التنقل بين الصفحات
-    nav = []
-    if page > 0:
-        nav.append(types.InlineKeyboardButton("‹ السابق", callback_data=f"page_{page-1}"))
-    if page < total_pages - 1:
-        nav.append(types.InlineKeyboardButton("التالي ›", callback_data=f"page_{page+1}"))
-    if nav:
-        mk.row(*nav)
     mk.row(types.InlineKeyboardButton("↩️ رجوع", callback_data="menu_main"))
     return mk
 
@@ -404,7 +391,6 @@ def start(msg):
             c.execute("UPDATE referrals SET ref_count=ref_count+1 WHERE user_id=?", (ref[0],))
             c.execute("UPDATE users SET balance=balance+0.05 WHERE user_id=?", (ref[0],))
             db.conn.commit()
-    # اختيار اللغة إجباري
     if not db.get_user(uid) or not db.get_user(uid)[3]:
         bot.send_message(cid, t("lang_select", uid), parse_mode="Markdown", reply_markup=lang_markup())
         return
@@ -415,10 +401,11 @@ def set_lang(call):
     uid, cid = call.from_user.id, call.message.chat.id
     lang = "ar" if call.data=="lang_ar" else "en"
     db.set_lang(uid, lang)
-    bot.answer_callback_query(call.id, "✅")
+    bot.answer_callback_query(call.id, t("lang_changed", uid))
     try: bot.delete_message(cid, call.message.message_id)
     except: pass
-    show_home(cid, uid)
+    # تحديث الكيبورد فقط دون إعادة إرسال الترحيب
+    bot.send_message(cid, "• • •", reply_markup=main_kb(uid))
 
 @bot.callback_query_handler(func=lambda c: c.data=="check_sub")
 def check_sub_cb(call):
@@ -429,12 +416,6 @@ def check_sub_cb(call):
         except: pass
         show_home(cid, uid)
     else: bot.answer_callback_query(call.id, "❌ لم تشترك", show_alert=True)
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("page_"))
-def page_cb(call):
-    page = int(call.data.split("_")[1])
-    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=countries_menu(page))
-    bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("get_"))
 def get_num(call):
@@ -510,7 +491,7 @@ def handle_buttons(message):
     elif message.text in [btn("lang", uid)]:
         bot.send_message(message.chat.id, t("lang_select", uid), parse_mode="Markdown", reply_markup=lang_markup())
 
-# ════════════════ لوحة الإدارة ════════════════
+# ════════════════ لوحة الإدارة الكاملة ════════════════
 @bot.message_handler(func=lambda m: m.text in ["⚙️ الإدارة", "⚙️ Admin"] and m.from_user.id in ADMIN_IDS)
 def admin_panel(message):
     uid = message.from_user.id
@@ -523,6 +504,8 @@ def admin_panel(message):
            types.InlineKeyboardButton("👥 مستخدمين", callback_data="users_list"))
     mk.add(types.InlineKeyboardButton("🚫 حظر", callback_data="ban"),
            types.InlineKeyboardButton("✅ فك", callback_data="unban"))
+    mk.add(types.InlineKeyboardButton("📊 إحصائيات", callback_data="stats_btn"),
+           types.InlineKeyboardButton("📄 تقرير", callback_data="report"))
     mk.add(types.InlineKeyboardButton("🔗 اشتراك", callback_data="force_sub"),
            types.InlineKeyboardButton("🖼️ صورة", callback_data="set_photo"))
     mk.add(types.InlineKeyboardButton("🗑️ مسح", callback_data="clear_data"),
@@ -599,6 +582,33 @@ def broadcast_exec(message):
         except: pass
     bot.send_message(message.chat.id, t("admin_broadcast_done", uid, cnt=cnt), parse_mode="Markdown")
     del user_states[uid]
+
+@bot.callback_query_handler(func=lambda c: c.data=="stats_btn")
+def stats_btn(call):
+    uid = call.from_user.id
+    total_users = len(db.all_users())
+    active = len(get_active())
+    otps = db.conn.cursor().execute("SELECT COUNT(*) FROM otp_logs").fetchone()[0]
+    bot.edit_message_text(t("admin_stats", uid, users=total_users, active=active, otps=otps),
+                          call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda c: c.data=="report")
+def report(call):
+    import tempfile
+    uid = call.from_user.id
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+        f.write(f"Bot Report - {datetime.now()}\n\n")
+        f.write("Users:\n")
+        for u in db.conn.cursor().execute("SELECT user_id, username FROM users").fetchall():
+            f.write(f"{u[0]} @{u[1] or 'N/A'}\n")
+        f.write("\nActive Numbers:\n")
+        for n in get_active():
+            f.write(f"{n[1]} ({n[2]}) assigned to {n[3]}\n")
+        fname = f.name
+    with open(fname, 'rb') as f:
+        bot.send_document(call.message.chat.id, f, caption="📄 تقرير شامل")
+    os.remove(fname)
+    bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda c: c.data in ["ban","unban"])
 def ban_unban_prompt(call):
