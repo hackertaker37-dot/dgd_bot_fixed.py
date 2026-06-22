@@ -1,4 +1,11 @@
 # -*- coding: utf-8 -*-
+"""
+ ╔══════════════════════════════════════════════════╗
+ ║           TAKER OTP BOT - Professional          ║
+ ║           Developer: @hackerTaker               ║
+ ║           API: xwdsms.org                        ║
+ ╚══════════════════════════════════════════════════╝
+"""
 import time, requests, json, re, os, sqlite3, threading, logging
 from datetime import datetime
 from telebot import types
@@ -11,14 +18,14 @@ API_KEY = "4886d4297bcfb669bf3b3d2d8d1c4ee2"
 BASE_URL = "http://xwdsms.org"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
-DB_PATH = "taker_final.db"
+DB_PATH = "taker_pro.db"
 DELETE_AFTER = 180
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ════════════════ قاعدة بيانات الدول ════════════════
-COUNTRIES_DB = {
+# ════════════════ جميع دول العالم ════════════════
+ALL_COUNTRIES = {
     "1": ("USA", "🇺🇸"), "7": ("Russia", "🇷🇺"), "20": ("Egypt", "🇪🇬"),
     "27": ("South Africa", "🇿🇦"), "30": ("Greece", "🇬🇷"), "31": ("Netherlands", "🇳🇱"),
     "32": ("Belgium", "🇧🇪"), "33": ("France", "🇫🇷"), "34": ("Spain", "🇪🇸"),
@@ -90,29 +97,38 @@ DEFAULT_PREFIXES = [
 ]
 
 # ════════════════ النصوص ════════════════
-TEXTS = {
-    "lang_select": {"ar": "🌐 *اختر لغتك*\n\nاختر اللغة:", "en": "🌐 *Select Your Language*\n\nChoose language:"},
-    "lang_set": {"ar": "✅ تم تعيين العربية", "en": "✅ English set"},
-    "welcome": {"ar": "🔰 أهلاً بك في Taker OTP\n\n*اختر الدولة:*", "en": "🔰 Welcome to Taker OTP\n\n*Select country:*"},
-    "choose_country": {"ar": "🌍 اختر الدولة:", "en": "🌍 Select country:"},
-    "number_assigned": {"ar": "✅ تم تخصيص رقم\n\n📞 `{number}`\n🌍 {flag} {country}\n⏳ في انتظار الكود...", "en": "✅ Number assigned\n\n📞 `{number}`\n🌍 {flag} {country}\n⏳ Waiting for code..."},
-    "number_changed": {"ar": "🔄 تم تغيير الرقم\n\n📞 `{number}`\n🌍 {flag} {country}\n⏳ في انتظار الكود...", "en": "🔄 Number changed\n\n📞 `{number}`\n🌍 {flag} {country}\n⏳ Waiting for code..."},
-    "maintenance": {"ar": "⚠️ البوت في وضع الصيانة", "en": "⚠️ Bot under maintenance"},
-    "subscribe": {"ar": "🔒 اشترك في القنوات أولاً", "en": "🔒 Subscribe first"},
-    "stats": {"ar": "📊 إحصائياتك\n\n🔷 الطلبات: `{req}`\n🔷 الأكواد: `{otp}`", "en": "📊 Your Stats\n\n🔷 Requests: `{req}`\n🔷 OTPs: `{otp}`"},
-    "balance": {"ar": "💰 رصيدك\n\n💎 `{bal:.3f} USDT`\n👤 الإحالات: `{ref}`\n🏦 رصيد الموقع: `{site}`", "en": "💰 Balance\n\n💎 `{bal:.3f} USDT`\n👤 Referrals: `{ref}`\n🏦 Site: `{site}`"},
-    "invite": {"ar": "🤝 دعوة\n\n🔗 `{link}`\n\n💰 `0.05 USDT` لكل صديق", "en": "🤝 Invite\n\n🔗 `{link}`\n\n💰 `0.05 USDT` per friend"},
-    "traffic": {"ar": "🟢 حركة المرور", "en": "🟢 Live Traffic"},
-    "no_active": {"ar": "لا توجد أرقام نشطة", "en": "No active numbers"},
-    "high_traffic": {"ar": "🔥 {flag} {name} حركة عالية", "en": "🔥 {flag} {name} High Traffic"},
-    "prefix_added": {"ar": "✅ تمت إضافة: {flag} {name}", "en": "✅ Added: {flag} {name}"},
-    "prefix_not_found": {"ar": "❌ كود غير معروف", "en": "❌ Unknown code"},
-    "admin_panel": {"ar": "*⚙️ لوحة التحكم*", "en": "*⚙️ Admin Panel*"},
-    "otp_user": {"ar": "*🔐 كود جديد*\n\n🌍 {name} {flag}\n📱 `{number}`\n🔑 `{code}`\n{icon} {service}", "en": "*🔐 New OTP*\n\n🌍 {name} {flag}\n📱 `{number}`\n🔑 `{code}`\n{icon} {service}"},
-    "otp_group": {"ar": "*🔐 كود جديد*\n\n🌍 {flag} {name} | {icon} {service}\n📱 `{masked}`\n🔑 `{code}`", "en": "*🔐 New OTP*\n\n🌍 {flag} {name} | {icon} {service}\n📱 `{masked}`\n🔑 `{code}`"},
-    "countries_list": {"ar": "🌍 *الدول المتاحة:*\n\n", "en": "🌍 *Available countries:*\n\n"},
-    "check_verified": {"ar": "✅ تم التحقق", "en": "✅ Verified"},
-    "check_failed": {"ar": "❌ لم تشترك", "en": "❌ Not subscribed"},
+T = {
+    "lang_select": {"ar": "🌐 *اختر لغتك*\n\nاختر اللغة التي تريد استخدام البوت بها:", "en": "🌐 *Select Your Language*\n\nChoose the language you want to use:"},
+    "lang_set": {"ar": "✅ تم تعيين اللغة العربية", "en": "✅ English language set"},
+    "welcome": {"ar": "🔰 *أهلاً بك في Taker OTP*\n\n• احصل على أرقام وهمية للتفعيل\n• استقبل الأكواد بشكل فوري\n• ادعُ أصدقاءك واربح رصيداً\n\n*اختر الدولة:*", "en": "🔰 *Welcome to Taker OTP*\n\n• Get virtual numbers for activation\n• Receive codes instantly\n• Invite friends and earn credit\n\n*Select country:*"},
+    "choose_country": {"ar": "🌍 *اختر الدولة:*", "en": "🌍 *Select country:*"},
+    "number_assigned": {"ar": "✅ *تم تخصيص رقم جديد*\n\n📞 `{number}`\n🌍 {flag} {country}\n⏳ في انتظار الكود...", "en": "✅ *Number Assigned*\n\n📞 `{number}`\n🌍 {flag} {country}\n⏳ Waiting for code..."},
+    "number_changed": {"ar": "🔄 *تم تغيير الرقم*\n\n📞 `{number}`\n🌍 {flag} {country}\n⏳ في انتظار الكود...", "en": "🔄 *Number Changed*\n\n📞 `{number}`\n🌍 {flag} {country}\n⏳ Waiting for code..."},
+    "maintenance": {"ar": "⚠️ *البوت في وضع الصيانة*\nيرجى المحاولة لاحقاً", "en": "⚠️ *Bot under maintenance*\nPlease try again later"},
+    "subscribe": {"ar": "🔒 *يجب الاشتراك في القنوات أولاً*", "en": "🔒 *You must subscribe to the channels first*"},
+    "stats": {"ar": "📊 *إحصائياتك*\n\n🔷 إجمالي الطلبات: `{req}`\n🔷 الأكواد المستلمة: `{otp}`", "en": "📊 *Your Statistics*\n\n🔷 Total Requests: `{req}`\n🔷 OTPs Received: `{otp}`"},
+    "balance": {"ar": "💰 *رصيدك*\n\n💎 رصيدك: `{bal:.3f} USDT`\n👤 الإحالات: `{ref}`\n🏦 رصيد الموقع: `{site}`\n🏦 الحد الأدنى للسحب: `18.0 USDT`\n\n💡 اربح `0.05 USDT` عن كل صديق", "en": "💰 *Your Balance*\n\n💎 Balance: `{bal:.3f} USDT`\n👤 Referrals: `{ref}`\n🏦 Site Balance: `{site}`\n🏦 Min Withdrawal: `18.0 USDT`\n\n💡 Earn `0.05 USDT` per friend"},
+    "invite": {"ar": "🤝 *دعوة الأصدقاء*\n\n🔗 رابط الدعوة الخاص بك:\n`{link}`\n\n💰 تربح `0.05 USDT` عن كل صديق\n📤 شارك الرابط مع أصدقائك", "en": "🤝 *Invite Friends*\n\n🔗 Your referral link:\n`{link}`\n\n💰 Earn `0.05 USDT` per friend\n📤 Share the link with your friends"},
+    "traffic_title": {"ar": "🟢 *حركة المرور*", "en": "🟢 *Live Traffic*"},
+    "no_active": {"ar": "⚠️ لا توجد أرقام نشطة حالياً", "en": "⚠️ No active numbers at the moment"},
+    "high_traffic": {"ar": "🔥 {flag} {name} | حركة مرور عالية", "en": "🔥 {flag} {name} | High Traffic"},
+    "prefix_added": {"ar": "✅ *تمت إضافة الدولة بنجاح*\n\n🌍 {flag} {name}\n🔢 الكود: `{prefix}`\n\nأصبحت متاحة للمستخدمين الآن", "en": "✅ *Country Added Successfully*\n\n🌍 {flag} {name}\n🔢 Code: `{prefix}`\n\nNow available for users"},
+    "prefix_exists": {"ar": "⚠️ *الدولة موجودة مسبقاً*\n\n🌍 {flag} {name}\n🔢 الكود: `{prefix}`\n\nهذه الدولة موجودة بالفعل في القائمة", "en": "⚠️ *Country Already Exists*\n\n🌍 {flag} {name}\n🔢 Code: `{prefix}`\n\nThis country is already in the list"},
+    "prefix_not_found": {"ar": "❌ *كود الدولة غير معروف*\n\nالكود `{prefix}` غير موجود في قاعدة البيانات العالمية\n\nتأكد من الكود وأعد المحاولة", "en": "❌ *Unknown Country Code*\n\nCode `{prefix}` not found in global database\n\nCheck the code and try again"},
+    "prefix_removed": {"ar": "✅ *تم حذف الدولة بنجاح*", "en": "✅ *Country Removed Successfully*"},
+    "admin_panel": {"ar": "*⚙️ لوحة التحكم*\n\nمرحباً بك في لوحة إدارة البوت", "en": "*⚙️ Admin Panel*\n\nWelcome to the bot control panel"},
+    "admin_add_prefix": {"ar": "*➕ إضافة دولة جديدة*\n\nأرسل كود الدولة فقط\nمثال: `22501`", "en": "*➕ Add New Country*\n\nSend country code only\nExample: `22501`"},
+    "admin_del_prefix": {"ar": "*➖ حذف دولة*\n\nاختر الدولة التي تريد حذفها:", "en": "*➖ Delete Country*\n\nSelect the country to delete:"},
+    "admin_broadcast": {"ar": "*📢 إذاعة*\n\nأرسل الرسالة التي تريد إرسالها لجميع المستخدمين:", "en": "*📢 Broadcast*\n\nSend the message to all users:"},
+    "admin_ban": {"ar": "*🚫 حظر مستخدم*\n\nأرسل ID المستخدم:", "en": "*🚫 Ban User*\n\nSend user ID:"},
+    "admin_unban": {"ar": "*✅ فك حظر*\n\nأرسل ID المستخدم:", "en": "*✅ Unban User*\n\nSend user ID:"},
+    "admin_done": {"ar": "✅ *تم بنجاح*", "en": "✅ *Done Successfully*"},
+    "admin_broadcast_done": {"ar": "✅ *تم الإرسال*\n\nعدد المستلمين: `{cnt}`", "en": "✅ *Sent*\n\nRecipients: `{cnt}`"},
+    "otp_user": {"ar": "*🔐 كود تفعيل جديد*\n\n🌍 الدولة: {name} {flag}\n📱 الرقم: `{number}`\n🔑 الكود: `{code}`\n{icon} التطبيق: {service}\n🏆 المكافأة: 0.0030\n💵 الرصيد: 0.0030", "en": "*🔐 New Activation Code*\n\n🌍 Country: {name} {flag}\n📱 Number: `{number}`\n🔑 Code: `{code}`\n{icon} Service: {service}\n🏆 Reward: 0.0030\n💵 Balance: 0.0030"},
+    "otp_group": {"ar": "*🔐 كود جديد*\n\n🌍 {flag} {name} | {icon} {service}\n📱 `{masked}`\n🔑 `{code}`\n💲 السعر: 0.001$\n\n_⏳ تُحذف تلقائياً بعد 3 دقائق_", "en": "*🔐 New OTP*\n\n🌍 {flag} {name} | {icon} {service}\n📱 `{masked}`\n🔑 `{code}`\n💲 Rate: 0.001$\n\n_⏳ Auto-delete in 3 minutes_"},
+    "countries_list": {"ar": "🌍 *الدول المتاحة:*\n\n", "en": "🌍 *Available Countries:*\n\n"},
+    "check_verified": {"ar": "✅ تم التحقق بنجاح", "en": "✅ Verified Successfully"},
+    "check_failed": {"ar": "❌ لم تشترك بعد", "en": "❌ Not subscribed yet"},
 }
 
 def t(key, uid=None, **kw):
@@ -121,10 +137,10 @@ def t(key, uid=None, **kw):
         u = db.get_user(uid)
         if u and u[3]:
             lang = u[3]
-    txt = TEXTS.get(key, {}).get(lang, TEXTS.get(key, {}).get("ar", key))
+    txt = T.get(key, {}).get(lang, T.get(key, {}).get("ar", key))
     return txt.format(**kw) if kw else txt
 
-# ════════════════ أسماء الأزرار بالعربي والإنجليزي ════════════════
+# ════════════════ أسماء الأزرار ════════════════
 BTN = {
     "new_num": {"ar": "📱 رقم جديد", "en": "📱 New Number"},
     "countries": {"ar": "🌍 الدول", "en": "🌍 Countries"},
@@ -171,8 +187,8 @@ class Database:
             c.execute("INSERT OR IGNORE INTO settings VALUES ('maintenance', '0')")
             c.execute("INSERT OR IGNORE INTO settings VALUES ('welcome_photo', '')")
             for p in DEFAULT_PREFIXES:
-                if p in COUNTRIES_DB:
-                    c.execute("INSERT OR IGNORE INTO active_prefixes VALUES (?,?)", (p, COUNTRIES_DB[p][0]))
+                if p in ALL_COUNTRIES:
+                    c.execute("INSERT OR IGNORE INTO active_prefixes VALUES (?,?)", (p, ALL_COUNTRIES[p][0]))
             c.commit()
 
     def setting(self, key, val=None):
@@ -189,12 +205,17 @@ class Database:
             return {r[0]: r[1] for r in c.execute("SELECT prefix, name FROM active_prefixes").fetchall()}
 
     def add_prefix(self, p):
-        if p in COUNTRIES_DB:
+        if p in ALL_COUNTRIES:
+            name = ALL_COUNTRIES[p][0]
             with sqlite3.connect(self.path) as c:
-                c.execute("INSERT OR REPLACE INTO active_prefixes VALUES (?,?)", (p, COUNTRIES_DB[p][0]))
+                # نفحص إذا كانت موجودة مسبقاً
+                exists = c.execute("SELECT 1 FROM active_prefixes WHERE prefix=?", (p,)).fetchone()
+                if exists:
+                    return "exists", name  # موجودة مسبقاً
+                c.execute("INSERT OR REPLACE INTO active_prefixes VALUES (?,?)", (p, name))
                 c.commit()
-            return COUNTRIES_DB[p][0]
-        return None
+            return "added", name  # تمت الإضافة
+        return "not_found", None  # غير موجودة
 
     def remove_prefix(self, p):
         with sqlite3.connect(self.path) as c:
@@ -280,7 +301,7 @@ def detect_service(txt):
     return "OTP"
 
 def cinfo(p):
-    return COUNTRIES_DB.get(p, (p, "🏳"))
+    return ALL_COUNTRIES.get(p, (p, "🏳"))
 
 def mask(n):
     n = str(n)
@@ -345,7 +366,6 @@ def delete_later(cid, mid, delay=180):
 # ════════════════ بوت تيليجرام ════════════════
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# ════════════════ دوال الكيبورد ════════════════
 def main_kb(uid):
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
     kb.add(btn("new_num", uid), btn("countries", uid), btn("stats", uid))
@@ -373,9 +393,7 @@ def num_actions(uid, p, aid):
            types.InlineKeyboardButton("↩️ رجوع", callback_data="menu_main"))
     return mk
 
-# ════════════════ عرض القائمة الرئيسية ════════════════
 def show_home(cid, uid):
-    """عرض القائمة الرئيسية الكاملة مع الكيبورد"""
     if db.setting("maintenance") == "1" and uid not in ADMIN_IDS:
         bot.send_message(cid, t("maintenance", uid), parse_mode="Markdown")
         return
@@ -398,7 +416,6 @@ def show_home(cid, uid):
     else:
         bot.send_message(cid, txt, parse_mode="Markdown", reply_markup=mk)
     
-    # ✅ إرسال الكيبورد السفلي دائماً
     bot.send_message(cid, "• • •", reply_markup=main_kb(uid))
 
 # ════════════════ الأوامر ════════════════
@@ -408,7 +425,6 @@ def start(msg):
     cid = msg.chat.id
     db.save_user(msg)
 
-    # إحالة
     args = msg.text.split()
     if len(args) > 1 and args[1].startswith("ref"):
         with sqlite3.connect(DB_PATH) as c:
@@ -420,8 +436,7 @@ def start(msg):
 
     u = db.get_user(uid)
     if not u or not u[3]:
-        # لا توجد لغة - عرض اختيار اللغة
-        bot.send_message(cid, "🌐 *اختر لغتك / Select Language*", parse_mode="Markdown", reply_markup=lang_markup())
+        bot.send_message(cid, t("lang_select", uid), parse_mode="Markdown", reply_markup=lang_markup())
         return
 
     show_home(cid, uid)
@@ -534,7 +549,7 @@ def handle_msg(message):
         if not rows:
             bot.send_message(cid, t("no_active", uid), parse_mode="Markdown")
         else:
-            lines = [t("traffic", uid), ""]
+            lines = [t("traffic_title", uid), ""]
             for p, cnt in rows:
                 n, f = cinfo(p)
                 lines.append(t("high_traffic", uid, flag=f, name=n) if cnt > 5 else f"{f} {n}: `{cnt}`")
@@ -549,10 +564,14 @@ def admin_panel(cid, uid):
     mk = types.InlineKeyboardMarkup(row_width=2)
     st = "🟢 مفتوح" if db.setting("maintenance") != "1" else "🔴 صيانة"
     mk.add(types.InlineKeyboardButton(f"الحالة: {st}", callback_data="tog"))
-    mk.add(types.InlineKeyboardButton("➕ دولة", callback_data="addp"), types.InlineKeyboardButton("➖ دولة", callback_data="delp"))
-    mk.add(types.InlineKeyboardButton("📢 إذاعة", callback_data="bcast"), types.InlineKeyboardButton("🚫 حظر", callback_data="ban"))
-    mk.add(types.InlineKeyboardButton("✅ فك", callback_data="unban"), types.InlineKeyboardButton("🔗 اشتراك", callback_data="fsub"))
-    mk.add(types.InlineKeyboardButton("🖼️ صورة", callback_data="photo"), types.InlineKeyboardButton("🗑️ مسح", callback_data="clear"))
+    mk.add(types.InlineKeyboardButton("➕ إضافة دولة", callback_data="addp"),
+           types.InlineKeyboardButton("➖ حذف دولة", callback_data="delp"))
+    mk.add(types.InlineKeyboardButton("📢 إذاعة", callback_data="bcast"),
+           types.InlineKeyboardButton("🚫 حظر", callback_data="ban"))
+    mk.add(types.InlineKeyboardButton("✅ فك حظر", callback_data="unban"),
+           types.InlineKeyboardButton("🔗 اشتراك", callback_data="fsub"))
+    mk.add(types.InlineKeyboardButton("🖼️ صورة", callback_data="photo"),
+           types.InlineKeyboardButton("🗑️ مسح", callback_data="clear"))
     mk.add(types.InlineKeyboardButton("↩️ خروج", callback_data="menu_main"))
     bot.send_message(cid, t("admin_panel", uid), parse_mode="Markdown", reply_markup=mk)
 
@@ -567,39 +586,52 @@ def tog(call):
 @bot.callback_query_handler(func=lambda c: c.data == "addp")
 def addp(call):
     ustates[call.from_user.id] = "addp"
-    bot.edit_message_text("*➕ أرسل كود الدولة:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+    bot.edit_message_text(t("admin_add_prefix", call.from_user.id),
+                          call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda m: ustates.get(m.from_user.id) == "addp")
 def addp_exe(msg):
     uid = msg.from_user.id
     p = msg.text.strip()
-    n = db.add_prefix(p)
-    if n:
+    status, name = db.add_prefix(p)
+    
+    if status == "added":
         _, f = cinfo(p)
-        bot.send_message(msg.chat.id, t("prefix_added", uid, flag=f, name=n), parse_mode="Markdown")
+        bot.send_message(msg.chat.id, t("prefix_added", uid, flag=f, name=name, prefix=p), parse_mode="Markdown")
+    elif status == "exists":
+        _, f = cinfo(p)
+        bot.send_message(msg.chat.id, t("prefix_exists", uid, flag=f, name=name, prefix=p), parse_mode="Markdown")
     else:
-        bot.send_message(msg.chat.id, t("prefix_not_found", uid), parse_mode="Markdown")
+        bot.send_message(msg.chat.id, t("prefix_not_found", uid, prefix=p), parse_mode="Markdown")
+    
     del ustates[uid]
 
 @bot.callback_query_handler(func=lambda c: c.data == "delp")
 def delp(call):
+    uid = call.from_user.id
+    pfx = db.prefixes()
+    if not pfx:
+        bot.answer_callback_query(call.id, "لا توجد دول", show_alert=True)
+        return
     mk = types.InlineKeyboardMarkup()
-    for p, n in sorted(db.prefixes().items()):
+    for p, n in sorted(pfx.items()):
         _, f = cinfo(p)
         mk.add(types.InlineKeyboardButton(f"{f} {n}", callback_data=f"delpp_{p}"))
-    mk.add(types.InlineKeyboardButton("🔙", callback_data="admback"))
-    bot.edit_message_text("*اختر الدولة:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=mk)
+    mk.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admback"))
+    bot.edit_message_text(t("admin_del_prefix", uid), call.message.chat.id, call.message.message_id,
+                          parse_mode="Markdown", reply_markup=mk)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("delpp_"))
 def delpp(call):
     db.remove_prefix(call.data.split("_")[1])
-    bot.answer_callback_query(call.id, "✅ تم")
+    bot.answer_callback_query(call.id, "✅ تم الحذف")
     admin_panel(call.message.chat.id, call.from_user.id)
 
 @bot.callback_query_handler(func=lambda c: c.data == "bcast")
 def bcast(call):
     ustates[call.from_user.id] = "bcast"
-    bot.edit_message_text("*📢 أرسل الرسالة:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+    bot.edit_message_text(t("admin_broadcast", call.from_user.id),
+                          call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda m: ustates.get(m.from_user.id) == "bcast")
 def bcast_exe(msg):
@@ -612,13 +644,20 @@ def bcast_exe(msg):
             time.sleep(0.03)
         except:
             pass
-    bot.send_message(msg.chat.id, f"✅ `{cnt}`")
+    bot.send_message(msg.chat.id, t("admin_broadcast_done", uid, cnt=cnt), parse_mode="Markdown")
     del ustates[uid]
 
-@bot.callback_query_handler(func=lambda c: c.data in ["ban", "unban"])
-def ban_unban(call):
-    ustates[call.from_user.id] = call.data
-    bot.edit_message_text("*أرسل ID:*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+@bot.callback_query_handler(func=lambda c: c.data == "ban")
+def ban_p(call):
+    ustates[call.from_user.id] = "ban"
+    bot.edit_message_text(t("admin_ban", call.from_user.id),
+                          call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda c: c.data == "unban")
+def unban_p(call):
+    ustates[call.from_user.id] = "unban"
+    bot.edit_message_text(t("admin_unban", call.from_user.id),
+                          call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda m: ustates.get(m.from_user.id) in ["ban", "unban"])
 def ban_unban_exe(msg):
@@ -628,21 +667,23 @@ def ban_unban_exe(msg):
         with sqlite3.connect(DB_PATH) as c:
             c.execute(f"UPDATE users SET is_banned={'1' if act=='ban' else '0'} WHERE user_id=?", (uid,))
             c.commit()
-        bot.send_message(msg.chat.id, "✅")
+        bot.send_message(msg.chat.id, t("admin_done", msg.from_user.id), parse_mode="Markdown")
     except:
-        bot.send_message(msg.chat.id, "❌")
+        bot.send_message(msg.chat.id, "❌ خطأ")
     del ustates[msg.from_user.id]
 
 @bot.callback_query_handler(func=lambda c: c.data == "fsub")
 def fsub(call):
+    uid = call.from_user.id
     with sqlite3.connect(DB_PATH) as c:
         chs = c.execute("SELECT * FROM force_channels WHERE enabled=1").fetchall()
     mk = types.InlineKeyboardMarkup()
     for ch in chs:
         mk.add(types.InlineKeyboardButton(f"{'✅' if ch[4] else '❌'} {ch[2]}", callback_data=f"edch_{ch[0]}"))
     mk.add(types.InlineKeyboardButton("➕ إضافة", callback_data="addch"))
-    mk.add(types.InlineKeyboardButton("🔙", callback_data="admback"))
-    bot.edit_message_text("*🔗*", call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=mk)
+    mk.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admback"))
+    bot.edit_message_text("*🔗 قنوات الاشتراك*", call.message.chat.id, call.message.message_id,
+                          parse_mode="Markdown", reply_markup=mk)
 
 @bot.callback_query_handler(func=lambda c: c.data == "addch")
 def addch(call):
@@ -652,7 +693,7 @@ def addch(call):
 @bot.message_handler(func=lambda m: ustates.get(m.from_user.id) == "addch_url")
 def addch_url(msg):
     ustates[msg.from_user.id] = ("addch_desc", msg.text.strip())
-    bot.send_message(msg.chat.id, "أرسل وصفاً:")
+    bot.send_message(msg.chat.id, "أرسل وصفاً للقناة:")
 
 @bot.message_handler(func=lambda m: isinstance(ustates.get(m.from_user.id), tuple))
 def addch_desc(msg):
@@ -661,7 +702,7 @@ def addch_desc(msg):
     with sqlite3.connect(DB_PATH) as c:
         c.execute("INSERT OR IGNORE INTO force_channels (channel_url, description) VALUES (?,?)", (url, desc))
         c.commit()
-    bot.send_message(msg.chat.id, "✅")
+    bot.send_message(msg.chat.id, "✅ تمت الإضافة")
     del ustates[msg.from_user.id]
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("edch_"))
@@ -679,7 +720,7 @@ def photo(call):
 @bot.message_handler(content_types=['photo'], func=lambda m: ustates.get(m.from_user.id) == "photo")
 def photo_save(msg):
     db.setting("welcome_photo", msg.photo[-1].file_id)
-    bot.send_message(msg.chat.id, "✅")
+    bot.send_message(msg.chat.id, "✅ تم حفظ الصورة")
     del ustates[msg.from_user.id]
 
 @bot.callback_query_handler(func=lambda c: c.data == "clear")
@@ -688,7 +729,7 @@ def clear(call):
         for t in ["users", "active_numbers", "otp_logs", "referrals"]:
             c.execute(f"DELETE FROM {t}")
         c.commit()
-    bot.answer_callback_query(call.id, "✅")
+    bot.answer_callback_query(call.id, "✅ تم مسح البيانات")
     admin_panel(call.message.chat.id, call.from_user.id)
 
 @bot.callback_query_handler(func=lambda c: c.data == "admback")
@@ -757,5 +798,5 @@ def run_web():
 if __name__ == "__main__":
     threading.Thread(target=run_web, daemon=True).start()
     threading.Thread(target=otp_loop, daemon=True).start()
-    logger.info("✅ Bot Running...")
+    logger.info("✅ Taker OTP Bot Running...")
     bot.infinity_polling()
