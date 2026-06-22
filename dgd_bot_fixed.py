@@ -106,7 +106,7 @@ TEXTS = {
     "number_assigned": {"ar": "✅ *تم تخصيص رقم*\n\n📞 `+{number}`\n🌍 {flag} {country}\n⏳ بانتظار الكود...", "en": "✅ *Number Assigned*\n\n📞 `+{number}`\n🌍 {flag} {country}\n⏳ Waiting for code..."},
     "number_changed": {"ar": "🔄 *تم تغيير الرقم*\n\n📞 `+{number}`\n🌍 {flag} {country}\n⏳ بانتظار الكود...", "en": "🔄 *Number Changed*\n\n📞 `+{number}`\n🌍 {flag} {country}\n⏳ Waiting for code..."},
     "maintenance": {"ar": "⚠️ *البوت في الصيانة*", "en": "⚠️ *Bot under maintenance*"},
-    "subscribe": {"ar": "🔒 *اشترك في القنوات أولاً*", "en": "🔒 *Subscribe to the channels first*"},
+    "subscribe": {"ar": "🔒 *اشترك في القنوات أولاً*", "en": "🔒 *Subscribe first*"},
     "stats": {"ar": "📊 *إحصائياتك*\n\n🔷 الطلبات: `{req}`\n🔷 الأكواد: `{otp}`", "en": "📊 *Your Stats*\n\n🔷 Requests: `{req}`\n🔷 OTPs: `{otp}`"},
     "balance": {"ar": "💰 *رصيدك*\n\n💎 `{bal:.3f} USDT`\n👤 الإحالات: `{ref}`\n🏦 الموقع: `{site}`", "en": "💰 *Balance*\n\n💎 `{bal:.3f} USDT`\n👤 Referrals: `{ref}`\n🏦 Site: `{site}`"},
     "invite": {"ar": "🤝 *دعوة*\n\n🔗 `{link}`\n\n💰 `0.05 USDT` لكل صديق", "en": "🤝 *Invite*\n\n🔗 `{link}`\n\n💰 `0.05 USDT` per friend"},
@@ -119,8 +119,8 @@ TEXTS = {
     "admin_panel": {"ar": "*⚙️ لوحة التحكم*", "en": "*⚙️ Admin Panel*"},
     "admin_add_prefix": {"ar": "*➕ أرسل كود الدولة*\nمثال: `22501`", "en": "*➕ Send country code*\nExample: `22501`"},
     "admin_del_prefix": {"ar": "*اختر الدولة للحذف:*", "en": "*Select country to delete:*"},
-    "admin_broadcast_all": {"ar": "*📢 أرسل الرسالة للإذاعة للجميع:*", "en": "*📢 Send message to broadcast to all:*"},
-    "admin_broadcast_user": {"ar": "*📨 أرسل ID المستخدم للإذاعة:*", "en": "*📨 Send user ID for broadcast:*"},
+    "admin_broadcast_all": {"ar": "*📢 أرسل الرسالة للإذاعة للجميع:*", "en": "*📢 Send message to broadcast:*"},
+    "admin_broadcast_user": {"ar": "*📨 أرسل ID المستخدم للإذاعة:*", "en": "*📨 Send user ID:*"},
     "admin_ban": {"ar": "*🚫 أرسل ID المستخدم للحظر:*", "en": "*🚫 Send user ID to ban:*"},
     "admin_unban": {"ar": "*✅ أرسل ID المستخدم لفك الحظر:*", "en": "*✅ Send user ID to unban:*"},
     "admin_user_info": {"ar": "*👤 أرسل ID المستخدم:*", "en": "*👤 Send user ID:*"},
@@ -130,6 +130,7 @@ TEXTS = {
     "otp_user": {"ar": "*🔐 كود جديد*\n\n🌍 {name} {flag}\n📱 `+{number}`\n🔑 `{code}`\n{icon} {service}", "en": "*🔐 New OTP*\n\n🌍 {name} {flag}\n📱 `+{number}`\n🔑 `{code}`\n{icon} {service}"},
     "otp_group": {"ar": "*🔐 كود جديد*\n\n🌍 {flag} {name} | {icon} {service}\n📱 `{masked}`\n🔑 `{code}`", "en": "*🔐 New OTP*\n\n🌍 {flag} {name} | {icon} {service}\n📱 `{masked}`\n🔑 `{code}`"},
     "countries_list": {"ar": "🌍 *الدول المتاحة:*\n\n", "en": "🌍 *Available Countries:*\n\n"},
+    "back": {"ar": "↩️ رجوع", "en": "↩️ Back"},
 }
 
 def t(key, uid=None, **kw):
@@ -360,7 +361,7 @@ def countries_menu():
     btns = [types.InlineKeyboardButton(f"{flag} {prefix}", callback_data=f"choose_{prefix}") for prefix, (name, flag) in countries]
     for i in range(0, len(btns), 3):
         mk.row(*btns[i:i+3])
-    mk.row(types.InlineKeyboardButton("↩️ رجوع" if True else "↩️ Back", callback_data="menu_main"))  # سيتم ترجمتها لاحقاً
+    mk.row(types.InlineKeyboardButton(t("back", None), callback_data="menu_main"))
     return mk
 
 def num_actions(uid, prefix, alloc_id):
@@ -368,7 +369,7 @@ def num_actions(uid, prefix, alloc_id):
     mk.row(types.InlineKeyboardButton("🔄 تغيير", callback_data=f"ch_{prefix}_{alloc_id}"),
            types.InlineKeyboardButton("🌍 دولة أخرى", callback_data="menu_countries"))
     mk.row(types.InlineKeyboardButton("📞 قناة الأكواد", url="https://t.me/numhj"),
-           types.InlineKeyboardButton("↩️ رجوع", callback_data="menu_main"))
+           types.InlineKeyboardButton(t("back", uid), callback_data="menu_main"))
     return mk
 
 def show_home(cid, uid):
@@ -444,7 +445,7 @@ def choose_country(call):
     for i, (aid, num) in enumerate(numbers[:3]):
         mk.add(types.InlineKeyboardButton(f"{i+1}. +{num}", callback_data=f"pick_{i}"))
     mk.add(types.InlineKeyboardButton("🔄 جلب غيرها", callback_data=f"choose_{prefix}"))
-    mk.add(types.InlineKeyboardButton("↩️ رجوع", callback_data="menu_countries"))
+    mk.add(types.InlineKeyboardButton(t("back", uid), callback_data="menu_countries"))
     name, flag = db.get_countries().get(prefix, (prefix, "🌍"))
     bot.edit_message_text(
         f"{t('choose_number', uid)}\n\n🌍 {flag} {name}",
@@ -496,7 +497,7 @@ def ch_num(call):
     for i, (aid, num) in enumerate(numbers[:3]):
         mk.add(types.InlineKeyboardButton(f"{i+1}. +{num}", callback_data=f"pick_{i}"))
     mk.add(types.InlineKeyboardButton("🔄 جلب غيرها", callback_data=f"ch_{p}_0"))
-    mk.add(types.InlineKeyboardButton("↩️ رجوع", callback_data="menu_countries"))
+    mk.add(types.InlineKeyboardButton(t("back", uid), callback_data="menu_countries"))
     name, flag = db.get_countries().get(p, (p, "🌍"))
     bot.edit_message_text(
         f"{t('choose_number', uid)}\n\n🌍 {flag} {name}",
@@ -605,7 +606,7 @@ def universal_handler(message):
         del admin_states[uid]
         return
 
-    # زر تغيير اللغة – استدعاء show_home لتحديث الواجهة بالكامل
+    # زر تغيير اللغة – تحديث الواجهة بالكامل
     if txt in [btn("lang", uid)]:
         current_lang = db.get_user(uid)[3] if db.get_user(uid) else "ar"
         new_lang = "en" if current_lang == "ar" else "ar"
@@ -660,7 +661,7 @@ def admin_panel(cid, uid):
     mk.add(types.InlineKeyboardButton("🔗 اشتراك", callback_data="force_sub"),
            types.InlineKeyboardButton("🖼️ صورة", callback_data="set_photo"))
     mk.add(types.InlineKeyboardButton("🗑️ مسح", callback_data="clear_data"),
-           types.InlineKeyboardButton("↩️ خروج", callback_data="menu_main"))
+           types.InlineKeyboardButton(t("back", uid), callback_data="menu_main"))
     bot.send_message(cid, t("admin_panel", uid), parse_mode="Markdown", reply_markup=mk)
 
 admin_states = {}
@@ -681,7 +682,7 @@ def del_country(call):
     mk = types.InlineKeyboardMarkup()
     for prefix, (name, flag) in sorted(countries.items()):
         mk.add(types.InlineKeyboardButton(f"{flag} {name}", callback_data=f"delc_{prefix}"))
-    mk.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_back"))
+    mk.add(types.InlineKeyboardButton(t("back", uid), callback_data="admin_back"))
     bot.edit_message_text(t("admin_del_prefix", uid), call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=mk)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("delc_"))
