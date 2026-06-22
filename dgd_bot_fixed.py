@@ -412,7 +412,6 @@ def check_sub_cb(call):
         show_home(cid, uid)
     else: bot.answer_callback_query(call.id, "❌ لم تشترك", show_alert=True)
 
-# الخطوة الأولى: يختار المستخدم الدولة -> نرسل له 3 أرقام للاختيار
 @bot.callback_query_handler(func=lambda c: c.data.startswith("choose_"))
 def choose_country(call):
     uid = call.from_user.id
@@ -540,7 +539,6 @@ def handle_buttons(message):
             lines = [t("traffic_title", uid), ""] + [f"{db.get_countries().get(p, (p,'🏳'))[1]} {db.get_countries().get(p, (p,''))[0]}: `{cnt}`" for p, cnt in rows]
             bot.send_message(message.chat.id, "\n".join(lines), parse_mode="Markdown")
     elif txt in [btn("lang", uid)]:
-        # تغيير اللغة مباشرة دون إعادة إرسال رسالة الاختيار
         u = db.get_user(uid)
         current_lang = u[3] if u else "ar"
         new_lang = "en" if current_lang == "ar" else "ar"
