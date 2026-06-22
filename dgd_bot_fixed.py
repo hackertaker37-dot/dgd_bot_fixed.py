@@ -1,11 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
- ╔══════════════════════════════════════════════╗
- ║       TAKER OTP BOT - Professional          ║
- ║       Developer: @hackerTaker               ║
- ║       API: xwdsms.org (Full Integration)     ║
- ╚══════════════════════════════════════════════╝
-"""
 import time, requests, re, os, sqlite3, threading, logging
 from datetime import datetime
 from telebot import types
@@ -19,12 +12,12 @@ BASE_URL = "http://xwdsms.org"
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
 DB_PATH = "taker_pro.db"
-DELETE_AFTER = 180  # حذف رسائل الجروب بعد 3 دقائق
+DELETE_AFTER = 180
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ════════════════ جميع دول العالم (للتحقق من الكود) ════════════════
+# ════════════════ قاعدة بيانات الدول العالمية (للتعرف على الاسم والعلم) ════════════════
 ALL_COUNTRIES = {
     "1": ("USA", "🇺🇸"), "7": ("Russia", "🇷🇺"), "20": ("Egypt", "🇪🇬"),
     "27": ("South Africa", "🇿🇦"), "30": ("Greece", "🇬🇷"), "31": ("Netherlands", "🇳🇱"),
@@ -96,7 +89,7 @@ DEFAULT_PREFIXES = [
     "24910", "49155", "23762", "22178", "22901", "22898",
 ]
 
-# ════════════════ نصوص الترجمة ════════════════
+# ════════════════ الترجمة ════════════════
 TEXTS = {
     "lang_select": {"ar": "🌐 *اختر لغتك*", "en": "🌐 *Select Language*"},
     "welcome": {"ar": "🔰 *أهلاً بك في Taker OTP*\n\n• أرقام وهمية للتفعيل\n• أكواد فورية\n\n*اختر الدولة:*", "en": "🔰 *Welcome to Taker OTP*\n\n• Virtual numbers\n• Instant codes\n\n*Select country:*"},
@@ -195,6 +188,7 @@ class Database:
         return [r[0] for r in self.conn.cursor().execute("SELECT prefix FROM active_prefixes ORDER BY prefix").fetchall()]
 
     def add_prefix(self, p):
+        """إضافة prefix جديد بعد التحقق من وجوده في ALL_COUNTRIES"""
         if p not in ALL_COUNTRIES:
             return "not_found"
         c = self.conn.cursor()
@@ -655,5 +649,5 @@ def run_web(): app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 if __name__ == "__main__":
     threading.Thread(target=run_web, daemon=True).start()
     threading.Thread(target=otp_loop, daemon=True).start()
-    logger.info("✅ Bot started")
+    logger.info("✅ Taker OTP Bot Started")
     bot.infinity_polling()
