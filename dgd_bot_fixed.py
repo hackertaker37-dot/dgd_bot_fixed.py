@@ -92,6 +92,7 @@ DEFAULT_PREFIXES = [
 # ════════════════ نصوص الترجمة ════════════════
 TEXTS = {
     "lang_select": {"ar": "🌐 *اختر لغتك*\n\nاختر اللغة التي تريد استخدام البوت بها:", "en": "🌐 *Select Your Language*\n\nChoose the language you want to use:"},
+    "lang_changed": {"ar": "✅ تم تغيير اللغة إلى العربية", "en": "✅ Language changed to English"},
     "welcome": {"ar": "🔰 *أهلاً بك في Taker OTP*\n\n• أرقام وهمية للتفعيل\n• أكواد فورية\n\n*اختر الدولة:*", "en": "🔰 *Welcome to Taker OTP*\n\n• Virtual numbers\n• Instant codes\n\n*Select country:*"},
     "choose_country": {"ar": "🌍 *اختر الدولة:*", "en": "🌍 *Select country:*"},
     "number_assigned": {"ar": "✅ *تم تخصيص رقم*\n\n📞 `+{number}`\n🌍 {flag} {country}\n⏳ بانتظار الكود...", "en": "✅ *Number Assigned*\n\n📞 `+{number}`\n🌍 {flag} {country}\n⏳ Waiting for code..."},
@@ -342,13 +343,27 @@ def main_kb(uid):
     if uid in ADMIN_IDS: kb.add(btn("admin", uid))
     return kb
 
-def countries_menu():
-    """قائمة الدول الجديدة: 3 أزرار في الصف، عرض العلم والرمز فقط"""
-    countries = db.get_countries()
+def countries_menu(page=0):
+    """قائمة دول احترافية: 3 أعمدة × 3 صفوف = 9 دول في الصفحة"""
+    countries = sorted(db.get_countries().items())
+    per_page = 9
+    total_pages = (len(countries) + per_page - 1) // per_page
+    start = page * per_page
+    chunk = countries[start:start+per_page]
+
     mk = types.InlineKeyboardMarkup(row_width=3)
-    btns = [types.InlineKeyboardButton(f"{flag} {prefix}", callback_data=f"get_{prefix}") for prefix, (name, flag) in sorted(countries.items())]
+    btns = [types.InlineKeyboardButton(f"{flag} {prefix}", callback_data=f"get_{prefix}") for prefix, (name, flag) in chunk]
     for i in range(0, len(btns), 3):
         mk.row(*btns[i:i+3])
+
+    # أزرار التنقل بين الصفحات
+    nav = []
+    if page > 0:
+        nav.append(types.InlineKeyboardButton("‹ السابق", callback_data=f"page_{page-1}"))
+    if page < total_pages - 1:
+        nav.append(types.InlineKeyboardButton("التالي ›", callback_data=f"page_{page+1}"))
+    if nav:
+        mk.row(*nav)
     mk.row(types.InlineKeyboardButton("↩️ رجوع", callback_data="menu_main"))
     return mk
 
@@ -389,6 +404,7 @@ def start(msg):
             c.execute("UPDATE referrals SET ref_count=ref_count+1 WHERE user_id=?", (ref[0],))
             c.execute("UPDATE users SET balance=balance+0.05 WHERE user_id=?", (ref[0],))
             db.conn.commit()
+    # اختيار اللغة إجباري
     if not db.get_user(uid) or not db.get_user(uid)[3]:
         bot.send_message(cid, t("lang_select", uid), parse_mode="Markdown", reply_markup=lang_markup())
         return
@@ -397,7 +413,8 @@ def start(msg):
 @bot.callback_query_handler(func=lambda c: c.data in ["lang_ar","lang_en"])
 def set_lang(call):
     uid, cid = call.from_user.id, call.message.chat.id
-    db.set_lang(uid, "ar" if call.data=="lang_ar" else "en")
+    lang = "ar" if call.data=="lang_ar" else "en"
+    db.set_lang(uid, lang)
     bot.answer_callback_query(call.id, "✅")
     try: bot.delete_message(cid, call.message.message_id)
     except: pass
@@ -412,6 +429,12 @@ def check_sub_cb(call):
         except: pass
         show_home(cid, uid)
     else: bot.answer_callback_query(call.id, "❌ لم تشترك", show_alert=True)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("page_"))
+def page_cb(call):
+    page = int(call.data.split("_")[1])
+    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=countries_menu(page))
+    bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("get_"))
 def get_num(call):
