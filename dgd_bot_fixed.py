@@ -28,6 +28,13 @@ DEFAULT_COUNTRIES = {
     "23762": "الكاميرون", "22178": "السنغال", "22901": "بنين", "22898": "توجو",
 }
 
+# أعلام الدول
+COUNTRY_FLAGS = {
+    "225": "🇨🇮", "232": "🇸🇱", "261": "🇲🇬", "44": "🇬🇧", "234": "🇳🇬",
+    "254": "🇰🇪", "249": "🇸🇩", "49": "🇩🇪", "237": "🇨🇲", "221": "🇸🇳",
+    "229": "🇧🇯", "228": "🇹🇬",
+}
+
 SERVICE_ICONS = {
     "WhatsApp": "💬", "Telegram": "✈️", "Facebook": "📘", "Instagram": "📷",
     "Google": "🔍", "Twitter/X": "🐦", "Discord": "🎮", "Snapchat": "👻",
@@ -35,46 +42,47 @@ SERVICE_ICONS = {
     "Uber": "🚗", "Netflix": "🎬", "YouTube": "▶️", "OTP": "🔐",
 }
 
+def get_flag(prefix):
+    for code, flag in COUNTRY_FLAGS.items():
+        if prefix.startswith(code): return flag
+    return "🌍"
+
 # ════════════════ API Functions ════════════════
 def api_get_number(prefix):
     headers = {"x-api-key": API_KEY, "Content-Type": "application/json"}
     try:
-        resp = requests.post(f"{BASE_URL}/api/v1/get-number", json={"range": prefix}, headers=headers, timeout=10)
+        resp = requests.post(f"{BASE_URL}/api/v1/get-number", json={"range": prefix}, headers=headers, timeout=8)
         resp.raise_for_status()
         data = resp.json()
         if not data.get("success"):
             raise Exception(data.get("message", "فشل جلب الرقم"))
         return data["id"], data["number"]
-    except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 404:
-            raise Exception("هذه الدولة غير متوفرة حالياً")
-        raise Exception(f"خطأ في الاتصال")
     except Exception as e:
         raise Exception(f"خطأ: {e}")
 
 def api_check_otp(number):
     headers = {"x-api-key": API_KEY}
     try:
-        resp = requests.get(f"{BASE_URL}/api/v1/check-otp", params={"number": number}, headers=headers, timeout=8)
+        resp = requests.get(f"{BASE_URL}/api/v1/check-otp", params={"number": number}, headers=headers, timeout=6)
         data = resp.json()
         if data.get("success"):
-            return data.get("status"), data.get("otp")
-        return None, None
+            return data.get("status"), data.get("otp"), data.get("message", "")
+        return None, None, ""
     except:
-        return None, None
+        return None, None, ""
 
 def api_delete_number(alloc_id):
     headers = {"x-api-key": API_KEY, "Content-Type": "application/json"}
     try:
-        resp = requests.post(f"{BASE_URL}/api/v1/delete-number", json={"id": alloc_id}, headers=headers, timeout=5)
-        return resp.json().get("success", False)
+        requests.post(f"{BASE_URL}/api/v1/delete-number", json={"id": alloc_id}, headers=headers, timeout=4)
+        return True
     except:
         return False
 
 def api_get_balance():
     headers = {"x-api-key": API_KEY}
     try:
-        resp = requests.get(f"{BASE_URL}/api/v1/balance", headers=headers, timeout=8)
+        resp = requests.get(f"{BASE_URL}/api/v1/balance", headers=headers, timeout=6)
         return resp.json().get("balance", "0")
     except:
         return "0"
@@ -90,7 +98,8 @@ def init_db():
         first_seen TEXT, last_seen TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS active_numbers (
         alloc_id TEXT PRIMARY KEY, number TEXT, prefix TEXT,
-        assigned_to INTEGER, created_at TEXT, status TEXT DEFAULT 'waiting', otp TEXT)''')
+        assigned_to INTEGER, created_at TEXT, status TEXT DEFAULT 'waiting', otp TEXT,
+        full_msg TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS otp_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT, otp TEXT,
         service TEXT, timestamp TEXT, assigned_to INTEGER)''')
@@ -194,7 +203,7 @@ def assign_number(uid, alloc_id, number, prefix):
     release_user_number(uid)
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("INSERT INTO active_numbers VALUES (?,?,?,?,?,?,NULL)",
+    c.execute("INSERT INTO active_numbers (alloc_id, number, prefix, assigned_to, created_at, status) VALUES (?,?,?,?,?,?)",
               (alloc_id, number, prefix, uid, datetime.now().isoformat(), 'waiting'))
     c.execute("UPDATE users SET total_requests=total_requests+1 WHERE user_id=?", (uid,))
     conn.commit()
@@ -203,7 +212,7 @@ def assign_number(uid, alloc_id, number, prefix):
 def get_all_active():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT alloc_id, number, prefix, assigned_to FROM active_numbers WHERE status='waiting'")
+    c.execute("SELECT alloc_id, number, prefix, assigned_to, full_msg FROM active_numbers WHERE status='waiting'")
     return c.fetchall()
 
 def get_user_stats(uid):
@@ -247,39 +256,29 @@ def process_referral(ref_code, new_uid):
 def clean(n): return str(n).replace("+", "").replace("-", "").replace(" ", "").strip()
 
 def detect_service(text):
+    """اكتشاف التطبيق من نص الرسالة كاملاً"""
     t = text.lower()
-    services = [
-        ("WhatsApp", ["whatsapp", "واتساب", "واتس"]),
-        ("Telegram", ["telegram", "تيليجرام", "تليجرام"]),
-        ("Facebook", ["facebook", "فيسبوك", "fb"]),
-        ("Instagram", ["instagram", "انستقرام", "انستا"]),
-        ("Google", ["google", "gmail", "جوجل"]),
-        ("Twitter / X", ["twitter", "تويتر", "x.com"]),
-        ("Discord", ["discord", "ديسكورد"]),
-        ("Snapchat", ["snapchat", "سناب شات", "سناب"]),
-        ("TikTok", ["tiktok", "تيك توك"]),
-        ("Amazon", ["amazon", "امازون"]),
-        ("Apple", ["apple", "ابل", "icloud"]),
-        ("Microsoft", ["microsoft", "مايكروسوفت"]),
-        ("Uber", ["uber", "اوبر"]),
-        ("Netflix", ["netflix", "نتفلكس"]),
-        ("YouTube", ["youtube", "يوتيوب"]),
-    ]
-    for svc, keywords in services:
-        if any(kw in t for kw in keywords):
-            return svc
-    return "Unknown Service"
-
-def mask_number(num):
-    n = str(num)
-    return f"{n[:4]}****{n[-3:]}" if len(n) > 7 else n
+    if "whatsapp" in t or "واتساب" in t or "واتس" in t: return "WhatsApp"
+    if "telegram" in t or "تيليجرام" in t or "تليجرام" in t: return "Telegram"
+    if "facebook" in t or "فيسبوك" in t or "fb" in t: return "Facebook"
+    if "instagram" in t or "انستقرام" in t or "انستا" in t: return "Instagram"
+    if "google" in t or "gmail" in t or "جوجل" in t: return "Google"
+    if "twitter" in t or "تويتر" in t or "x.com" in t: return "Twitter/X"
+    if "discord" in t or "ديسكورد" in t: return "Discord"
+    if "snapchat" in t or "سناب" in t: return "Snapchat"
+    if "tiktok" in t or "تيك توك" in t: return "TikTok"
+    if "amazon" in t or "امازون" in t: return "Amazon"
+    if "apple" in t or "ابل" in t or "icloud" in t: return "Apple"
+    if "microsoft" in t or "مايكروسوفت" in t: return "Microsoft"
+    if "uber" in t or "اوبر" in t: return "Uber"
+    if "netflix" in t or "نتفلكس" in t: return "Netflix"
+    if "youtube" in t or "يوتيوب" in t: return "YouTube"
+    return "OTP"
 
 def format_time(iso_str):
     if not iso_str: return "غير معروف"
-    try:
-        return datetime.fromisoformat(iso_str).strftime("%d-%m-%Y %H:%M")
-    except:
-        return iso_str
+    try: return datetime.fromisoformat(iso_str).strftime("%d-%m-%Y %H:%M")
+    except: return iso_str
 
 def check_subscription(uid):
     conn = sqlite3.connect(DB_PATH)
@@ -310,11 +309,6 @@ def sub_markup():
     mk.add(types.InlineKeyboardButton("✅ تحقق من الاشتراك", callback_data="check_sub"))
     return mk
 
-def delete_later(cid, mid, delay=180):
-    time.sleep(delay)
-    try: bot.delete_message(cid, mid)
-    except: pass
-
 # ════════════════ بوت تيليجرام ════════════════
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -328,12 +322,13 @@ def main_keyboard(uid):
 
 def country_inline(page=0):
     countries = list(get_all_countries().items())
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    per_page = 8
+    markup = types.InlineKeyboardMarkup(row_width=3)
+    per_page = 9
     start = page * per_page
     chunk = countries[start:start+per_page]
     for prefix, name in chunk:
-        markup.add(types.InlineKeyboardButton(name, callback_data=f"getnum_{prefix}"))
+        flag = get_flag(prefix)
+        markup.add(types.InlineKeyboardButton(f"{flag} {name}", callback_data=f"getnum_{prefix}"))
     nav = []
     if page > 0:
         nav.append(types.InlineKeyboardButton("‹ السابق", callback_data=f"countries_{page-1}"))
@@ -414,8 +409,9 @@ def get_number(call):
             mk.add(types.InlineKeyboardButton(f"{i+1}. +{num}", callback_data=f"pick_{i}"))
         mk.add(types.InlineKeyboardButton("🔄 جلب غيرها", callback_data=f"getnum_{prefix}"))
         mk.add(types.InlineKeyboardButton("↩️ رجوع", callback_data="country_menu"))
+        flag = get_flag(prefix)
         name = get_all_countries().get(prefix, prefix)
-        bot.edit_message_text(f"*اختر رقماً من القائمة:*\n\n🌍 {name}",
+        bot.edit_message_text(f"*اختر رقماً من القائمة:*\n\n{flag} {name}",
                               call.message.chat.id, call.message.message_id,
                               parse_mode="Markdown", reply_markup=mk)
     except Exception as e:
@@ -435,10 +431,11 @@ def pick_number(call):
     for i, (a, n) in enumerate(numbers):
         if i != idx: api_delete_number(a)
     assign_number(uid, aid, num, prefix)
+    flag = get_flag(prefix)
     name = get_all_countries().get(prefix, prefix)
     now = datetime.now().strftime("%H:%M")
     bot.edit_message_text(
-        f"*✅ تم تخصيص رقم جديد*\n\n📞 *الرقم:* `+{num}`\n🌍 *الدولة:* {name}\n🕒 *الوقت:* {now}\n⏳ *الحالة:* في انتظار رمز التفعيل",
+        f"*✅ تم تخصيص رقم جديد*\n\n📞 *الرقم:* `+{num}`\n🌍 *الدولة:* {flag} {name}\n🕒 *الوقت:* {now}\n⏳ *الحالة:* في انتظار رمز التفعيل",
         call.message.chat.id, call.message.message_id, parse_mode="Markdown",
         reply_markup=number_actions(prefix, aid))
     del user_data[uid]
@@ -472,8 +469,9 @@ def change_number(call):
             mk.add(types.InlineKeyboardButton(f"{i+1}. +{num}", callback_data=f"pick_{i}"))
         mk.add(types.InlineKeyboardButton("🔄 جلب غيرها", callback_data=f"change_{prefix}_0"))
         mk.add(types.InlineKeyboardButton("↩️ رجوع", callback_data="country_menu"))
+        flag = get_flag(prefix)
         name = get_all_countries().get(prefix, prefix)
-        bot.edit_message_text(f"*اختر رقماً من القائمة:*\n\n🌍 {name}",
+        bot.edit_message_text(f"*اختر رقماً من القائمة:*\n\n{flag} {name}",
                               call.message.chat.id, call.message.message_id,
                               parse_mode="Markdown", reply_markup=mk)
     except Exception as e:
@@ -498,7 +496,7 @@ def bottom_buttons(message):
         bot.send_message(message.chat.id, "*🌍 اختر الدولة:*", parse_mode="Markdown", reply_markup=country_inline())
     elif message.text == "🌍 الدول المتاحة":
         countries = get_all_countries()
-        text = "*🌍 الدول المتاحة:*\n\n" + "\n".join(f"• `{p}` - {n}" for p, n in countries.items())
+        text = "*🌍 الدول المتاحة:*\n\n" + "\n".join(f"• `{p}` - {get_flag(p)} {n}" for p, n in countries.items())
         bot.send_message(message.chat.id, text, parse_mode="Markdown")
     elif message.text == "📊 إحصائياتي":
         requests, otps, first, last = get_user_stats(uid)
@@ -538,8 +536,9 @@ def bottom_buttons(message):
             lines = []
             for i, (prefix, cnt) in enumerate(rows, 1):
                 name = get_all_countries().get(prefix, prefix)
+                flag = get_flag(prefix)
                 perc = (cnt / total) * 100 if total else 0
-                lines.append(f"{i}️⃣ `{name}` → `{perc:.1f}%`")
+                lines.append(f"{i}️⃣ {flag} `{name}` → `{perc:.1f}%`")
             text = "*🟢 حركة المرور*\n\n" + "\n".join(lines)
         bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
@@ -594,7 +593,8 @@ def del_country_start(call):
     countries = get_all_countries()
     markup = types.InlineKeyboardMarkup()
     for prefix, name in countries.items():
-        markup.add(types.InlineKeyboardButton(f"{name} ({prefix})", callback_data=f"delcountry_{prefix}"))
+        flag = get_flag(prefix)
+        markup.add(types.InlineKeyboardButton(f"{flag} {name} ({prefix})", callback_data=f"delcountry_{prefix}"))
     markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="admin_back"))
     bot.edit_message_text("*➖ حذف دولة*\nاختر الدولة:", call.message.chat.id, call.message.message_id,
                           parse_mode="Markdown", reply_markup=markup)
@@ -618,7 +618,7 @@ def broadcast_exec(message):
         try:
             bot.copy_message(u, message.chat.id, message.message_id)
             cnt += 1
-            time.sleep(0.03)
+            time.sleep(0.02)
         except: pass
     bot.send_message(message.chat.id, f"✅ تم الإرسال إلى `{cnt}` مستخدم", parse_mode="Markdown")
     del user_states[message.from_user.id]
@@ -630,8 +630,7 @@ def users_list(call):
     c.execute("SELECT user_id, username, first_name FROM users WHERE is_banned=0 ORDER BY user_id DESC LIMIT 20")
     rows = c.fetchall()
     conn.close()
-    if not rows:
-        msg = "لا يوجد مستخدمون بعد."
+    if not rows: msg = "لا يوجد مستخدمون بعد."
     else:
         msg = "*👥 آخر المستخدمين:*\n\n"
         for uid, uname, fname in rows:
@@ -653,8 +652,7 @@ def ban_exec(message):
         conn.commit()
         conn.close()
         bot.send_message(message.chat.id, f"✅ تم حظر `{uid}`", parse_mode="Markdown")
-    except:
-        bot.send_message(message.chat.id, "❌ معرف غير صحيح")
+    except: bot.send_message(message.chat.id, "❌ معرف غير صحيح")
     del user_states[message.from_user.id]
 
 @bot.callback_query_handler(func=lambda c: c.data == "unban" and c.from_user.id in ADMIN_IDS)
@@ -671,8 +669,7 @@ def unban_exec(message):
         conn.commit()
         conn.close()
         bot.send_message(message.chat.id, f"✅ تم فك حظر `{uid}`", parse_mode="Markdown")
-    except:
-        bot.send_message(message.chat.id, "❌ معرف غير صحيح")
+    except: bot.send_message(message.chat.id, "❌ معرف غير صحيح")
     del user_states[message.from_user.id]
 
 @bot.callback_query_handler(func=lambda c: c.data == "force_sub" and c.from_user.id in ADMIN_IDS)
@@ -753,8 +750,8 @@ def universal_handler(message):
     uid = message.from_user.id
     cid = message.chat.id
     txt = message.text
-
     state = user_states.get(uid)
+
     if state == "add_country_prefix":
         prefix = txt.strip()
         user_states[uid] = ("add_country_name", prefix)
@@ -776,7 +773,7 @@ def universal_handler(message):
             try:
                 bot.copy_message(u, cid, message.message_id)
                 cnt += 1
-                time.sleep(0.03)
+                time.sleep(0.02)
             except: pass
         bot.send_message(cid, f"✅ تم الإرسال إلى `{cnt}` مستخدم", parse_mode="Markdown")
         del user_states[uid]
@@ -789,9 +786,8 @@ def universal_handler(message):
             conn.cursor().execute(f"UPDATE users SET is_banned={'1' if state=='ban' else '0'} WHERE user_id=?", (target,))
             conn.commit()
             conn.close()
-            bot.send_message(cid, f"✅ تم", parse_mode="Markdown")
-        except:
-            bot.send_message(cid, "❌ معرف غير صحيح")
+            bot.send_message(cid, "✅ تم", parse_mode="Markdown")
+        except: bot.send_message(cid, "❌ معرف غير صحيح")
         del user_states[uid]
         return
 
@@ -815,30 +811,48 @@ def universal_handler(message):
 def otp_loop():
     while True:
         try:
-            for alloc_id, number, prefix, uid in get_all_active():
+            for alloc_id, number, prefix, uid, full_msg in get_all_active():
                 try:
-                    status, otp = api_check_otp(number)
+                    status, otp, raw_msg = api_check_otp(number)
                     if status == "success" and otp:
-                        service = detect_service(otp)
+                        # استخدام الرسالة الكاملة من API إن وجدت، وإلا استخدم النص المخزن
+                        msg_text = raw_msg if raw_msg else (full_msg or "")
+                        service = detect_service(msg_text)
                         ic = SERVICE_ICONS.get(service, "🔐")
                         country = get_all_countries().get(prefix, prefix)
+                        flag = get_flag(prefix)
                         code = f"{otp[:3]}-{otp[3:]}" if len(otp) > 3 else otp
+
+                        # إرسال للمستخدم
                         if uid:
                             try:
-                                bot.send_message(uid,
-                                    f"*🔐 تم استقبال رمز التفعيل*\n\n📞 *الرقم:* `+{number}`\n🌍 *الدولة:* {country}\n{ic} *التطبيق:* {service}\n🔢 *الكود:* `{code}`",
-                                    parse_mode="Markdown")
+                                user_msg = (f"*🔐 تم استقبال رمز التفعيل*\n\n"
+                                           f"📞 *الرقم:* `+{number}`\n"
+                                           f"🌍 *الدولة:* {flag} {country}\n"
+                                           f"{ic} *التطبيق:* {service}\n"
+                                           f"🔢 *الكود:* `{code}`\n\n"
+                                           f"انسخ الكود واستخدمه فوراً")
+                                bot.send_message(uid, user_msg, parse_mode="Markdown")
                             except: pass
+
+                        # إرسال للجروب
                         for cid in CHAT_IDS:
                             try:
-                                sent = bot.send_message(cid,
-                                    f"*🔐 كود جديد*\n\n📞 `{mask_number(number)}`\n🌍 {country}\n{ic} {service}\n🔢 `{code}`",
-                                    parse_mode="Markdown")
-                                threading.Thread(target=delete_later, args=(cid, sent.message_id, DELETE_AFTER), daemon=True).start()
+                                group_msg = (f"*🔐 كود جديد*\n\n"
+                                            f"📞 `{number[:4]}****{number[-3:]}`\n"
+                                            f"🌍 {flag} {country}\n"
+                                            f"{ic} {service}\n"
+                                            f"🔢 `{code}`")
+                                sent = bot.send_message(cid, group_msg, parse_mode="Markdown")
+                                threading.Thread(target=lambda: time.sleep(DELETE_AFTER) or bot.delete_message(cid, sent.message_id), daemon=True).start()
                             except: pass
+
+                        # تحديث قاعدة البيانات
                         conn = sqlite3.connect(DB_PATH)
-                        conn.cursor().execute("UPDATE active_numbers SET status='success', otp=? WHERE alloc_id=?", (otp, alloc_id))
+                        conn.cursor().execute("UPDATE active_numbers SET status='success', otp=?, full_msg=? WHERE alloc_id=?", (otp, msg_text, alloc_id))
                         conn.cursor().execute("UPDATE users SET total_otps=total_otps+1 WHERE user_id=?", (uid,))
+                        conn.cursor().execute("INSERT INTO otp_logs (number, otp, service, timestamp, assigned_to) VALUES (?,?,?,?,?)",
+                                             (number, otp, service, datetime.now().isoformat(), uid))
                         conn.commit()
                         conn.close()
                         api_delete_number(alloc_id)
