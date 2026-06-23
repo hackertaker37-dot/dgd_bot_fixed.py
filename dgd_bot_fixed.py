@@ -11,12 +11,13 @@ import time, requests, re, os, sqlite3, threading, logging
 from datetime import datetime
 from telebot import types
 import telebot
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request as flask_request
 
 # ════════════════ الإعدادات الأساسية ════════════════
 BOT_TOKEN = "8686995713:AAGVKoSpcbn6d2OwzvMfqOzI5LDUeO5eHqs"
 API_KEY = "97257ac6fe5efd03c28b43af34a887b3"
 BASE_URL = "http://xwdsms.org"
+# ✅ تأكد من معرف الجروب الصحيح - يجب أن يبدأ بـ -100
 CHAT_IDS = ["-1003789271722"]
 ADMIN_IDS = [8728019066, 8972941677]
 DB_PATH = "taker_final.db"
@@ -118,7 +119,6 @@ TRANSLATIONS = {
 
 
 def get_lang(uid):
-    """جلب لغة المستخدم من قاعدة البيانات - ترجع None إذا لم يختر بعد"""
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
@@ -131,7 +131,6 @@ def get_lang(uid):
 
 
 def set_lang(uid, lang):
-    """حفظ لغة المستخدم في قاعدة البيانات"""
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
@@ -143,12 +142,10 @@ def set_lang(uid, lang):
 
 
 def _(key, uid=None, **kwargs):
-    """دالة الترجمة - ترجع النص المناسب حسب لغة المستخدم"""
     if uid:
         lang = get_lang(uid)
     else:
         lang = "ar"
-    # إذا لم يختر لغة بعد، نعرض العربية افتراضياً
     if lang is None:
         lang = "ar"
     text = TRANSLATIONS.get(key, {}).get(lang)
@@ -163,7 +160,6 @@ def _(key, uid=None, **kwargs):
 
 
 def lang_selection_keyboard():
-    """كيبورد اختيار اللغة الإجباري"""
     mk = types.InlineKeyboardMarkup(row_width=2)
     mk.add(
         types.InlineKeyboardButton("🇸🇦 العربية", callback_data="set_lang_ar"),
@@ -266,7 +262,6 @@ def api_get_balance():
 
 # ════════════════ قاعدة البيانات ════════════════
 def get_db():
-    """الحصول على اتصال بقاعدة البيانات"""
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
@@ -554,6 +549,53 @@ def sub_markup(uid):
     ))
     return mk
 
+# ════════════════ دالة إرسال OTP للجروب (مركزية) ════════════════
+def send_otp_to_groups(number, prefix, country, flag, detected_service, ic, code, otp_log_id):
+    """
+    ✅ دالة مركزية لإرسال الكود لجميع الجروبات
+    ترسل لكل CHAT_ID وتفحص الخطأ بالتفصيل
+    """
+    masked = f"{number[:4]}****{number[-3:]}" if len(number) > 7 else number
+    group_msg = (
+        f"*🔐 كود جديد*\n\n"
+        f"🌍 {flag} {country} | {ic} {detected_service}\n"
+        f"📞 `{masked}`\n"
+        f"🔢 `{code}`"
+    )
+    
+    for cid in CHAT_IDS:
+        try:
+            logger.info(f"📤 إرسال كود للجروب: {cid} | الرقم: {masked} | الكود: {code}")
+            sent = bot.send_message(cid, group_msg, parse_mode="Markdown")
+            logger.info(f"✅ تم الإرسال للجروب {cid} بنجاح - msg_id: {sent.message_id}")
+            
+            # حذف تلقائي بعد المدة المحددة
+            threading.Thread(
+                target=lambda cid=cid, mid=sent.message_id: (
+                    time.sleep(DELETE_AFTER),
+                    bot.delete_message(cid, mid)
+                ),
+                daemon=True
+            ).start()
+        except Exception as e:
+            logger.error(f"❌ فشل إرسال الكود للجروب {cid}: {str(e)}")
+            # محاولة إعادة الإرسال مرة واحدة
+            try:
+                time.sleep(1)
+                sent = bot.send_message(cid, group_msg, parse_mode="Markdown")
+                logger.info(f"✅ تمت إعادة الإرسال للجروب {cid} بنجاح")
+                
+                threading.Thread(
+                    target=lambda cid=cid, mid=sent.message_id: (
+                        time.sleep(DELETE_AFTER),
+                        bot.delete_message(cid, mid)
+                    ),
+                    daemon=True
+                ).start()
+            except Exception as e2:
+                logger.error(f"❌❌ فشل نهائي في إرسال الكود للجروب {cid}: {str(e2)}")
+
+
 # ════════════════ بوت تيليجرام ════════════════
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True, num_threads=4)
 
@@ -569,7 +611,6 @@ def main_keyboard(uid):
         types.KeyboardButton(_("invite_btn", uid)),
         types.KeyboardButton(_("traffic_btn", uid))
     )
-    # زر تغيير اللغة
     lang = get_lang(uid)
     if lang == "ar":
         lang_btn_text = "🌐 English"
@@ -581,7 +622,6 @@ def main_keyboard(uid):
     return kb
 
 def services_menu(uid):
-    """قائمة الخدمات مع أيقونات"""
     services = get_all_services()
     markup = types.InlineKeyboardMarkup(row_width=3)
     buttons = []
@@ -600,7 +640,6 @@ def services_menu(uid):
     return markup
 
 def countries_for_service(service_key, uid):
-    """عرض الدول المتاحة لخدمة معينة"""
     countries = get_all_countries()
     markup = types.InlineKeyboardMarkup(row_width=3)
     buttons = []
@@ -615,7 +654,6 @@ def countries_for_service(service_key, uid):
     return markup
 
 def number_actions(prefix, service_key, alloc_id, uid):
-    """أزرار التحكم بعد الحصول على رقم"""
     mk = types.InlineKeyboardMarkup()
     mk.row(
         types.InlineKeyboardButton(_("change_number", uid), callback_data=f"change_{prefix}_{service_key}_{alloc_id}"),
@@ -628,7 +666,6 @@ def number_actions(prefix, service_key, alloc_id, uid):
     return mk
 
 def show_home(cid, uid):
-    """عرض الصفحة الرئيسية"""
     if get_setting("maintenance") == "1" and uid not in ADMIN_IDS:
         bot.send_message(cid, _("maintenance", uid), parse_mode="Markdown")
         return
@@ -664,16 +701,13 @@ def start(message):
     
     save_user(message)
     
-    # معالجة الإحالة
     args = message.text.split()
     if len(args) > 1 and args[1].startswith("ref"):
         process_referral(args[1], uid)
     
-    # ═════ التحقق من اللغة أولاً ═════
     current_lang = get_lang(uid)
     
     if current_lang is None:
-        # المستخدم جديد - إجباره على اختيار اللغة
         bot.send_message(
             cid,
             "🌐 *اختر لغتك / Choose your language*\n\n"
@@ -684,11 +718,9 @@ def start(message):
         )
         return
     
-    # المستخدم لديه لغة - انتقل للرئيسية
     show_home(cid, uid)
 
 
-# ════════════════ كول باك اختيار اللغة ════════════════
 @bot.callback_query_handler(func=lambda c: c.data in ["set_lang_ar", "set_lang_en"])
 def set_language_callback(call):
     uid = call.from_user.id
@@ -704,7 +736,6 @@ def set_language_callback(call):
     
     bot.edit_message_text(msg, cid, call.message.message_id, parse_mode="Markdown")
     
-    # الآن نعرض الواجهة الرئيسية
     show_home(cid, uid)
 
 
@@ -719,7 +750,6 @@ def check_sub(call):
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("svc_"))
 def choose_service(call):
-    """اختيار خدمة وعرض الدول"""
     uid = call.from_user.id
     service_key = call.data.split("_", 1)[1]
     services = get_all_services()
@@ -737,7 +767,6 @@ def choose_service(call):
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("get_"))
 def get_number(call):
-    """جلب رقم واحد فقط للمستخدم"""
     uid = call.from_user.id
     parts = call.data.split("_", 2)
     prefix = parts[1]
@@ -784,7 +813,6 @@ def get_number(call):
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("change_"))
 def change_number(call):
-    """تغيير الرقم الحالي"""
     uid = call.from_user.id
     parts = call.data.split("_", 3)
     prefix = parts[1]
@@ -847,34 +875,17 @@ def back_menu(call):
     else:
         show_home(call.message.chat.id, uid)
 
-# ════════════════ الكيبورد السفلي - Handler واحد بدون تعارض ════════════════
+# ════════════════ الكيبورد السفلي - Handler واحد ════════════════
 @bot.message_handler(func=lambda m: True, content_types=['text'])
 def handle_all_text(message):
-    """
-    Handler رئيسي واحد لكل النصوص - يمنع التكرار والتعارض
-    """
     uid = message.from_user.id
     cid = message.chat.id
     text = message.text.strip() if message.text else ""
     
-    # تجاهل الرسائل الفارغة
     if not text:
         return
     
-    # ══════ أزرار القائمة السفلية ══════
-    # نبني قاموس الأزرار حسب لغة المستخدم الحالية
     lang = get_lang(uid) or "ar"
-    
-    # أزرار القائمة الرئيسية
-    btn_get = TRANSLATIONS["get_number_btn"][lang]
-    btn_countries = TRANSLATIONS["countries_btn"][lang]
-    btn_stats = TRANSLATIONS["stats_btn"][lang]
-    btn_balance = TRANSLATIONS["balance_btn"][lang]
-    btn_invite = TRANSLATIONS["invite_btn"][lang]
-    btn_traffic = TRANSLATIONS["traffic_btn"][lang]
-    btn_admin = TRANSLATIONS["admin_btn"][lang]
-    btn_lang_ar = "🌐 English"  # الزر المعروض للمستخدم العربي
-    btn_lang_en = "🌐 العربية"   # الزر المعروض للمستخدم الإنجليزي
     
     # ══════ 1. زر الحصول على رقم ══════
     if text in [TRANSLATIONS["get_number_btn"]["ar"], TRANSLATIONS["get_number_btn"]["en"]]:
@@ -974,14 +985,12 @@ def handle_all_text(message):
     # ══════ معالجة حالات الإدخال للإدارة (user_states) ══════
     state = user_states.get(uid)
     
-    # إضافة دولة - prefix
     if state == "add_country_prefix":
         prefix = text
         user_states[uid] = ("add_country_name", prefix)
         bot.send_message(cid, "Send country name:")
         return
     
-    # إضافة دولة - name
     if isinstance(state, tuple) and state[0] == "add_country_name":
         prefix = state[1]
         name = text
@@ -990,14 +999,12 @@ def handle_all_text(message):
         del user_states[uid]
         return
     
-    # إضافة خدمة - key
     if state == "add_service_key":
         key = text.lower()
         user_states[uid] = ("add_service_name", key)
         bot.send_message(cid, "Send service name in English:")
         return
     
-    # إضافة خدمة - name
     if isinstance(state, tuple) and state[0] == "add_service_name":
         key = state[1]
         name = text
@@ -1005,7 +1012,6 @@ def handle_all_text(message):
         bot.send_message(cid, "Send icon (one emoji):")
         return
     
-    # إضافة خدمة - icon
     if isinstance(state, tuple) and state[0] == "add_service_icon":
         key = state[1]
         name = state[2]
@@ -1014,7 +1020,6 @@ def handle_all_text(message):
         bot.send_message(cid, "Send Arabic name:")
         return
     
-    # إضافة خدمة - arabic name
     if isinstance(state, tuple) and state[0] == "add_service_ar":
         key = state[1]
         name = state[2]
@@ -1025,7 +1030,6 @@ def handle_all_text(message):
         del user_states[uid]
         return
     
-    # إذاعة
     if state == "broadcast":
         users = get_all_users()
         cnt = 0
@@ -1040,7 +1044,6 @@ def handle_all_text(message):
         del user_states[uid]
         return
     
-    # حظر/فك حظر
     if state in ["ban", "unban"]:
         action = state
         try:
@@ -1056,14 +1059,12 @@ def handle_all_text(message):
         del user_states[uid]
         return
     
-    # إضافة قناة اشتراك - url
     if state == "addch_url":
         url = text
         user_states[uid] = ("addch_desc", url)
         bot.send_message(cid, "Send description:")
         return
     
-    # إضافة قناة اشتراك - desc
     if isinstance(state, tuple) and state[0] == "addch_desc":
         url = state[1]
         desc = text
@@ -1074,9 +1075,6 @@ def handle_all_text(message):
         bot.send_message(cid, "✅ Added")
         del user_states[uid]
         return
-    
-    # ══════ لا يوجد تطابق - رسالة افتراضية ══════
-    # لا نرسل شيء، فقط نتجاهل
 
 # ════════════════ لوحة الإدارة الكاملة ════════════════
 def admin_panel(message):
@@ -1274,16 +1272,22 @@ def clear_data(call):
 def admin_back(call):
     admin_panel(call.message)
 
-# ════════════════ حلقة فحص OTP ════════════════
+# ════════════════ حلقة فحص OTP (محسنة مع لوجات) ════════════════
 def otp_loop():
+    logger.info("🔄 بدء حلقة فحص OTP...")
     while True:
         try:
             active = get_all_active()
+            if active:
+                logger.info(f"🔍 جاري فحص {len(active)} رقم نشط...")
+            
             for alloc_id, number, prefix, service_key, uid in active:
                 try:
                     status, otp, raw_msg = api_check_otp(number)
                     
                     if status == "success" and otp:
+                        logger.info(f"🎯 تم العثور على كود! الرقم: {number} | الكود: {otp}")
+                        
                         detected_service = detect_service(raw_msg) if raw_msg else "OTP"
                         if detected_service == "OTP":
                             services = get_all_services()
@@ -1295,7 +1299,7 @@ def otp_loop():
                         flag = get_flag(prefix)
                         code = f"{otp[:3]}-{otp[3:]}" if len(otp) > 3 else otp
                         
-                        # إرسال للمستخدم (في البوت)
+                        # ✅ إرسال للمستخدم (في البوت)
                         if uid:
                             try:
                                 user_msg = (
@@ -1307,29 +1311,21 @@ def otp_loop():
                                     f"انسخ الكود واستخدمه فوراً"
                                 )
                                 bot.send_message(uid, user_msg, parse_mode="Markdown")
-                            except:
-                                pass
+                                logger.info(f"✅ تم إرسال الكود للمستخدم {uid}")
+                            except Exception as e:
+                                logger.error(f"❌ فشل إرسال الكود للمستخدم {uid}: {e}")
                         
-                        # إرسال للجروب (جميع CHAT_IDS)
-                        for cid in CHAT_IDS:
-                            try:
-                                masked = f"{number[:4]}****{number[-3:]}" if len(number) > 7 else number
-                                group_msg = (
-                                    f"*🔐 كود جديد*\n\n"
-                                    f"🌍 {flag} {country} | {ic} {detected_service}\n"
-                                    f"📞 `{masked}`\n"
-                                    f"🔢 `{code}`"
-                                )
-                                sent = bot.send_message(cid, group_msg, parse_mode="Markdown")
-                                threading.Thread(
-                                    target=lambda cid=cid, mid=sent.message_id: (
-                                        time.sleep(DELETE_AFTER),
-                                        bot.delete_message(cid, mid)
-                                    ),
-                                    daemon=True
-                                ).start()
-                            except:
-                                pass
+                        # ✅ إرسال للجروب (باستخدام الدالة المركزية)
+                        send_otp_to_groups(
+                            number=number,
+                            prefix=prefix,
+                            country=country,
+                            flag=flag,
+                            detected_service=detected_service,
+                            ic=ic,
+                            code=code,
+                            otp_log_id=None
+                        )
                         
                         # تحديث قاعدة البيانات
                         conn = get_db()
@@ -1343,22 +1339,24 @@ def otp_loop():
                         c.execute("DELETE FROM active_numbers WHERE alloc_id=?", (alloc_id,))
                         conn.commit()
                         conn.close()
+                        logger.info(f"🗑️ تم حذف التخصيص {alloc_id} من قاعدة البيانات")
                     
                     elif status == "expired":
+                        logger.info(f"⏰ انتهت صلاحية الرقم {number}")
                         api_delete_number(alloc_id)
                         conn = get_db()
                         conn.cursor().execute("DELETE FROM active_numbers WHERE alloc_id=?", (alloc_id,))
                         conn.commit()
                         conn.close()
                 
-                except:
-                    pass
-        except:
-            pass
+                except Exception as e:
+                    logger.error(f"خطأ في معالجة الرقم {number}: {e}")
+        except Exception as e:
+            logger.error(f"خطأ في حلقة OTP: {e}")
         
         time.sleep(3)
 
-# ════════════════ Flask ════════════════
+# ════════════════ Flask (الموقع + Webhook للـ API) ════════════════
 app = Flask(__name__)
 
 @app.route('/')
@@ -1369,13 +1367,56 @@ def home():
 def health():
     return jsonify(status="ok"), 200
 
+@app.route('/api/v1/get-number', methods=['POST'])
+def flask_get_number():
+    """
+    ✅ واجهة احتياطية: يمكن استخدامها كـ Proxy بين البوت والموقع
+    """
+    try:
+        data = flask_request.get_json()
+        prefix = data.get("range", "")
+        headers = {"x-api-key": API_KEY, "Content-Type": "application/json"}
+        resp = requests.post(f"{BASE_URL}/api/v1/get-number", json={"range": prefix}, headers=headers, timeout=10)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+@app.route('/api/v1/check-otp', methods=['GET'])
+def flask_check_otp():
+    """✅ واجهة احتياطية لفحص OTP"""
+    try:
+        number = flask_request.args.get("number", "")
+        headers = {"x-api-key": API_KEY}
+        resp = requests.get(f"{BASE_URL}/api/v1/check-otp", params={"number": number}, headers=headers, timeout=8)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+@app.route('/api/v1/balance', methods=['GET'])
+def flask_balance():
+    """✅ واجهة احتياطية للرصيد"""
+    try:
+        headers = {"x-api-key": API_KEY}
+        resp = requests.get(f"{BASE_URL}/api/v1/balance", headers=headers, timeout=8)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({"balance": "0"}), 500
+
 def run_web():
     port = int(os.environ.get("PORT", 8080))
+    logger.info(f"🌐 Flask running on port {port}")
     app.run(host="0.0.0.0", port=port)
 
 # ════════════════ تشغيل البوت ════════════════
 if __name__ == "__main__":
+    logger.info("=" * 50)
+    logger.info("🤖 Taker OTP Bot Starting...")
+    logger.info(f"📢 Group IDs: {CHAT_IDS}")
+    logger.info(f"👑 Admin IDs: {ADMIN_IDS}")
+    logger.info("=" * 50)
+    
     threading.Thread(target=run_web, daemon=True).start()
     threading.Thread(target=otp_loop, daemon=True).start()
+    
     logger.info("✅ Bot is running (AR/EN) - Single handler mode...")
     bot.infinity_polling()
