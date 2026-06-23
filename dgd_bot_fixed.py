@@ -1,4 +1,3 @@
-# Colored by hacker Taker (@hackerTaker)
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════╗
@@ -590,7 +589,7 @@ def main_keyboard(uid):
         types.KeyboardButton(_("countries_btn", uid))
     )
     lang = get_lang(uid) or "ar"
-    kb.add(types.KeyboardButton("🌐 English" if lang == "ar" else "🌐 العربية", style='primary'))
+    kb.add(types.KeyboardButton("🌐 English" if lang == "ar" else "🌐 العربية"))
     if uid in ADMIN_IDS:
         kb.add(types.KeyboardButton(_("admin_btn", uid)))
     return kb
@@ -702,8 +701,8 @@ def start(message):
     if current_lang is None:
         mk = types.InlineKeyboardMarkup(row_width=2)
         mk.add(
-            types.InlineKeyboardButton("العربية", callback_data="set_lang_ar", style='danger'),
-            types.InlineKeyboardButton("English", callback_data="set_lang_en", style='primary')
+            types.InlineKeyboardButton("🇸🇦 العربية", callback_data="set_lang_ar"),
+            types.InlineKeyboardButton("🇬🇧 English", callback_data="set_lang_en")
         )
         bot.send_message(cid, "🌐 *اختر لغتك / Choose your language*\n\nيرجى اختيار اللغة للمتابعة\nPlease choose your language to continue",
                         parse_mode="Markdown", reply_markup=mk)
@@ -932,7 +931,7 @@ def del_country_start(call):
     countries = get_all_countries(); markup = types.InlineKeyboardMarkup()
     for prefix, name in countries.items():
         markup.add(types.InlineKeyboardButton(f"{get_flag(prefix)} {name} ({prefix})", callback_data=f"delcountry_{prefix}"))
-    markup.add(types.InlineKeyboardButton("Back", callback_data="admin_back", style='success'))
+    markup.add(types.InlineKeyboardButton("🔙 Back", callback_data="admin_back"))
     bot.edit_message_text("*Delete Country*", call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("delcountry_") and c.from_user.id in ADMIN_IDS)
@@ -984,7 +983,7 @@ def del_service_start(call):
     for key, data in services.items():
         if key != "all":
             markup.add(types.InlineKeyboardButton(f"{data['icon']} {data['ar']}", callback_data=f"delservice_{key}"))
-    markup.add(types.InlineKeyboardButton("Back", callback_data="admin_back", style='success'))
+    markup.add(types.InlineKeyboardButton("🔙 Back", callback_data="admin_back"))
     bot.edit_message_text("*Delete Service*", call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("delservice_") and c.from_user.id in ADMIN_IDS)
@@ -1062,7 +1061,7 @@ def force_sub_menu(call):
     for ch in channels:
         st = "✅" if ch[4] else "❌"
         markup.add(types.InlineKeyboardButton(f"{st} {ch[2]}", callback_data=f"editch_{ch[0]}"))
-    markup.row(types.InlineKeyboardButton("Add", callback_data="addch", style='primary'), types.InlineKeyboardButton("Back", callback_data="admin_back", style='success'))
+    markup.row(types.InlineKeyboardButton("➕ Add", callback_data="addch"), types.InlineKeyboardButton("🔙 Back", callback_data="admin_back"))
     bot.edit_message_text("*🔗 Force Sub*", call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda c: c.data == "addch" and c.from_user.id in ADMIN_IDS)
