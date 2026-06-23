@@ -13,7 +13,7 @@ import telebot
 from flask import Flask, jsonify
 
 # ════════════════ الإعدادات الأساسية ════════════════
-BOT_TOKEN = "8686995713:AAFrJX2N1ODGm8gro8Ri5AMNLVTRLD5u-fw"
+BOT_TOKEN = "8686995713:AAG2nrHUSeGi3UZhbdZCYHe0jdnWxTSqduI"
 API_KEY = "4886d4297bcfb669bf3b3d2d8d1c4ee2"
 BASE_URL = "http://xwdsms.org"
 CHAT_IDS = ["-1003789271722"]
