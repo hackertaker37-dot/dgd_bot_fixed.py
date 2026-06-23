@@ -1,18 +1,25 @@
 # -*- coding: utf-8 -*-
+"""
+ ╔══════════════════════════════════════════════╗
+ ║       TAKER OTP BOT - Final Real Version    ║
+ ║       Developer: @hackerTaker               ║
+ ║       API: xwdsms.org (Full Integration)     ║
+ ╚══════════════════════════════════════════════╝
+"""
 import time, requests, re, os, sqlite3, threading, logging
 from datetime import datetime
 from telebot import types
 import telebot
 from flask import Flask, jsonify
 
-# ════════════════ الإعدادات ════════════════
-BOT_TOKEN = "8686995713:AAESbzEIEnCf1Rbct1hy5FlNS0SgnHmuppk"
+# ════════════════ الإعدادات الأساسية ════════════════
+BOT_TOKEN = "8686995713:AAFrJX2N1ODGm8gro8Ri5AMNLVTRLD5u-fw"
 API_KEY = "4886d4297bcfb669bf3b3d2d8d1c4ee2"
 BASE_URL = "http://xwdsms.org"
-CHAT_IDS = ["-1003789271722"]
-ADMIN_IDS = [8728019066, 8972941677]
+CHAT_IDS = ["-1003789271722"]               # جروب استقبال الأكواد
+ADMIN_IDS = [8728019066, 8972941677]       # أنت والإدمن الثاني
 DB_PATH = "taker_pro.db"
-DELETE_AFTER = 180  # حذف رسائل الجروب بعد 3 دقائق
+DELETE_AFTER = 180                         # حذف رسائل الجروب بعد 3 دقائق
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -380,7 +387,6 @@ def show_home(cid, uid):
         try: bot.send_photo(cid, photo, caption=txt, parse_mode="Markdown", reply_markup=mk)
         except: bot.send_message(cid, txt, parse_mode="Markdown", reply_markup=mk)
     else: bot.send_message(cid, txt, parse_mode="Markdown", reply_markup=mk)
-    # ضمان ظهور لوحة المفاتيح الرئيسية دائماً
     bot.send_message(cid, "• • •", reply_markup=main_kb(uid))
 
 # ════════════════ أوامر ════════════════
@@ -396,8 +402,7 @@ def start(msg):
             c.execute("UPDATE referrals SET ref_count=ref_count+1 WHERE user_id=?", (ref[0],))
             c.execute("UPDATE users SET balance=balance+0.05 WHERE user_id=?", (ref[0],))
             db.conn.commit()
-    u = db.get_user(uid)
-    if not u or not u[3]:
+    if not db.get_user(uid) or not db.get_user(uid)[3]:
         bot.send_message(cid, t("lang_select", uid), parse_mode="Markdown", reply_markup=lang_markup())
         return
     show_home(cid, uid)
@@ -410,7 +415,6 @@ def set_lang(call):
     bot.answer_callback_query(call.id, t("lang_changed", uid))
     try: bot.delete_message(cid, call.message.message_id)
     except: pass
-    # عرض القائمة الرئيسية فوراً بعد اختيار اللغة
     show_home(cid, uid)
 
 @bot.callback_query_handler(func=lambda c: c.data=="check_sub")
@@ -520,7 +524,6 @@ def universal_handler(message):
     cid = message.chat.id
     txt = message.text
 
-    # حالات الإدارة أولاً
     state = admin_states.get(uid)
     if state == "add_prefix":
         prefix = txt.strip()
@@ -603,7 +606,6 @@ def universal_handler(message):
         del admin_states[uid]
         return
 
-    # زر تغيير اللغة – تحديث الواجهة بالكامل
     if txt in [btn("lang", uid)]:
         current_lang = db.get_user(uid)[3] if db.get_user(uid) else "ar"
         new_lang = "en" if current_lang == "ar" else "ar"
@@ -612,7 +614,6 @@ def universal_handler(message):
         show_home(cid, uid)
         return
 
-    # باقي الأزرار
     if txt in [btn("new_num", uid)]:
         bot.send_message(cid, t("choose_country", uid), parse_mode="Markdown", reply_markup=countries_menu())
     elif txt in [btn("countries", uid)]:
