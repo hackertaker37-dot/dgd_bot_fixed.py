@@ -14,7 +14,7 @@ import telebot
 from flask import Flask, jsonify
 
 # ════════════════ الإعدادات الأساسية ════════════════
-BOT_TOKEN = "8686995713:AAEIlMFUtvyjZu2Qms9vhyZUlztbS67AldQ"
+BOT_TOKEN = "8686995713:AAGVKoSpcbn6d2OwzvMfqOzI5LDUeO5eHqs"
 API_KEY = "97257ac6fe5efd03c28b43af34a887b3"
 BASE_URL = "http://xwdsms.org"
 CHAT_IDS = ["-1003789271722"]
@@ -107,17 +107,24 @@ TRANSLATIONS = {
     "admin_clear": {"ar": "🗑️ مسح البيانات", "en": "🗑️ Clear Data"},
     "admin_exit": {"ar": "↩️ خروج", "en": "↩️ Exit"},
     "bot_status": {"ar": "حالة البوت: {}", "en": "Bot status: {}"},
+    # نصوص شاشة اختيار اللغة الإجبارية
+    "lang_select_title": {
+        "ar": "🌐 *اختر لغتك / Choose your language*",
+        "en": "🌐 *اختر لغتك / Choose your language*"
+    },
+    "lang_select_arabic": {"ar": "🇸🇦 العربية", "en": "🇸🇦 العربية"},
+    "lang_select_english": {"ar": "🇬🇧 English", "en": "🇬🇧 English"},
 }
 
 
 def get_lang(uid):
-    """جلب لغة المستخدم من قاعدة البيانات"""
+    """جلب لغة المستخدم من قاعدة البيانات - ترجع None إذا لم يختر بعد"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT value FROM settings WHERE key=?", (f"lang_{uid}",))
     row = c.fetchone()
     conn.close()
-    return row[0] if row else "ar"
+    return row[0] if row else None
 
 
 def set_lang(uid, lang):
@@ -135,12 +142,28 @@ def _(key, uid=None, **kwargs):
         lang = get_lang(uid)
     else:
         lang = "ar"
+    # إذا لم يختر لغة بعد، نعرض العربية افتراضياً
+    if lang is None:
+        lang = "ar"
     text = TRANSLATIONS.get(key, {}).get(lang)
     if text is None:
         text = TRANSLATIONS.get(key, {}).get("ar", key)
     if kwargs:
-        text = text.format(**kwargs)
+        try:
+            text = text.format(**kwargs)
+        except:
+            pass
     return text
+
+
+def lang_selection_keyboard():
+    """كيبورد اختيار اللغة الإجباري"""
+    mk = types.InlineKeyboardMarkup(row_width=2)
+    mk.add(
+        types.InlineKeyboardButton("🇸🇦 العربية", callback_data="set_lang_ar"),
+        types.InlineKeyboardButton("🇬🇧 English", callback_data="set_lang_en")
+    )
+    return mk
 
 
 # ════════════════ الخدمات الافتراضية ════════════════
@@ -637,11 +660,49 @@ def start(message):
     
     save_user(message)
     
+    # معالجة الإحالة
     args = message.text.split()
     if len(args) > 1 and args[1].startswith("ref"):
         process_referral(args[1], uid)
     
+    # ═════ التحقق من اللغة أولاً ═════
+    current_lang = get_lang(uid)
+    
+    if current_lang is None:
+        # المستخدم جديد - إجباره على اختيار اللغة
+        bot.send_message(
+            cid,
+            "🌐 *اختر لغتك / Choose your language*\n\n"
+            "يرجى اختيار اللغة للمتابعة\n"
+            "Please choose your language to continue",
+            parse_mode="Markdown",
+            reply_markup=lang_selection_keyboard()
+        )
+        return
+    
+    # المستخدم لديه لغة - انتقل للرئيسية
     show_home(cid, uid)
+
+
+# ════════════════ كول باك اختيار اللغة ════════════════
+@bot.callback_query_handler(func=lambda c: c.data.startswith("set_lang_"))
+def set_language_callback(call):
+    uid = call.from_user.id
+    cid = call.message.chat.id
+    lang = call.data.split("_")[2]  # "ar" أو "en"
+    
+    set_lang(uid, lang)
+    
+    if lang == "ar":
+        msg = "✅ *تم تعيين اللغة العربية بنجاح*\n\nأهلاً بك في بوت Taker OTP!"
+    else:
+        msg = "✅ *Language set to English successfully*\n\nWelcome to Taker OTP Bot!"
+    
+    bot.edit_message_text(msg, cid, call.message.message_id, parse_mode="Markdown")
+    
+    # الآن نعرض الواجهة الرئيسية
+    show_home(cid, uid)
+
 
 @bot.callback_query_handler(func=lambda c: c.data == "check_sub")
 def check_sub(call):
@@ -812,7 +873,6 @@ def bottom_buttons(message):
         if new_lang == "ar":
             bot.send_message(cid, _("language_changed", uid), reply_markup=main_keyboard(uid))
         else:
-            # للغة الجديدة نستخدم النص مباشرة
             bot.send_message(cid, "✅ Language changed to English", reply_markup=main_keyboard(uid))
         return
     
@@ -1218,10 +1278,9 @@ def otp_loop():
                         flag = get_flag(prefix)
                         code = f"{otp[:3]}-{otp[3:]}" if len(otp) > 3 else otp
                         
-                        # إرسال للمستخدم
+                        # إرسال للمستخدم (في البوت)
                         if uid:
                             try:
-                                # إرسال بالعربية افتراضياً للمستخدم (يمكن تعديله حسب لغته)
                                 user_msg = (
                                     f"*🔐 تم استقبال رمز التفعيل*\n\n"
                                     f"📞 *الرقم:* `+{number}`\n"
@@ -1234,7 +1293,7 @@ def otp_loop():
                             except:
                                 pass
                         
-                        # إرسال للجروب
+                        # إرسال للجروب (جميع CHAT_IDS)
                         for cid in CHAT_IDS:
                             try:
                                 masked = f"{number[:4]}****{number[-3:]}" if len(number) > 7 else number
@@ -1247,7 +1306,10 @@ def otp_loop():
                                 sent = bot.send_message(cid, group_msg, parse_mode="Markdown")
                                 # حذف تلقائي بعد 3 دقائق
                                 threading.Thread(
-                                    target=lambda: (time.sleep(DELETE_AFTER), bot.delete_message(cid, sent.message_id)),
+                                    target=lambda cid=cid, mid=sent.message_id: (
+                                        time.sleep(DELETE_AFTER),
+                                        bot.delete_message(cid, mid)
+                                    ),
                                     daemon=True
                                 ).start()
                             except:
