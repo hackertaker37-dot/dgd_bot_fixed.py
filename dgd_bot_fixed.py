@@ -9,10 +9,11 @@
 ║      ██║   ██║  ██║██║  ██╗███████╗██║  ██║    ╚██████╔╝   ██║   ██║        ║
 ║      ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝     ╚═════╝    ╚═╝   ╚═╝        ║
 ║                                                                              ║
-║          TAKER OTP BOT - GOD MODE FINAL EDITION v10.0                        ║
+║          TAKER OTP BOT - GOD MODE FINAL EDITION v11.0                        ║
 ║          Developer: @hackerTaker                                             ║
 ║          API: xwdsms.org (Full Integration)                                  ║
 ║          Languages: Arabic & English (Bilingual)                             ║
+║          Feature: Service Detection with Icons                               ║
 ║          Status: PRODUCTION READY - MAXIMUM PERFORMANCE                      ║
 ║                                                                              ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
@@ -28,7 +29,7 @@ from flask import Flask, jsonify, request as flask_request, render_template_stri
 # SYSTEM INFORMATION
 # ══════════════════════════════════════════════════════════════════════════════
 SYSTEM_START_TIME = datetime.now()
-SYSTEM_VERSION = "10.0-FINAL"
+SYSTEM_VERSION = "11.0-FINAL"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ULTIMATE CONFIGURATION
@@ -237,6 +238,49 @@ def lang_selection_keyboard():
     return mk
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SERVICE ICONS MAP - FOR OTP MESSAGES
+# ══════════════════════════════════════════════════════════════════════════════
+SERVICE_ICONS_MAP = {
+    "WhatsApp": "💬",
+    "Telegram": "✈️",
+    "Facebook": "📘",
+    "Instagram": "📷",
+    "Google": "🔍",
+    "Twitter/X": "🐦",
+    "Discord": "🎮",
+    "Snapchat": "👻",
+    "TikTok": "🎵",
+    "Amazon": "📦",
+    "Apple": "🍎",
+    "Microsoft": "🪟",
+    "Uber": "🚗",
+    "Netflix": "🎬",
+    "YouTube": "▶️",
+    "IMO": "📞",
+    "OTP": "🔐",
+}
+
+SERVICE_NAMES_AR = {
+    "WhatsApp": "واتساب",
+    "Telegram": "تيليجرام",
+    "Facebook": "فيسبوك",
+    "Instagram": "انستغرام",
+    "Google": "جوجل",
+    "Twitter/X": "تويتر",
+    "Discord": "ديسكورد",
+    "Snapchat": "سناب شات",
+    "TikTok": "تيك توك",
+    "Amazon": "امازون",
+    "Apple": "ابل",
+    "Microsoft": "مايكروسوفت",
+    "Uber": "اوبر",
+    "Netflix": "نتفلكس",
+    "YouTube": "يوتيوب",
+    "IMO": "ايمو",
+    "OTP": "كود تفعيل",
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
 # DEFAULT DATA
 # ══════════════════════════════════════════════════════════════════════════════
 DEFAULT_SERVICES = OrderedDict([
@@ -290,15 +334,6 @@ COUNTRY_FLAGS = {
     "237": "🇨🇲", "221": "🇸🇳", "229": "🇧🇯", "228": "🇹🇬",
 }
 
-SERVICE_ICONS = {
-    "WhatsApp": "💬", "Telegram": "✈️", "Facebook": "📘",
-    "Instagram": "📷", "Google": "🔍", "Twitter/X": "🐦",
-    "Discord": "🎮", "Snapchat": "👻", "TikTok": "🎵",
-    "Amazon": "📦", "Apple": "🍎", "Microsoft": "🪟",
-    "Uber": "🚗", "Netflix": "🎬", "YouTube": "▶️",
-    "IMO": "📞", "OTP": "🔐",
-}
-
 def get_flag(prefix):
     for code, flag in COUNTRY_FLAGS.items():
         if prefix.startswith(code):
@@ -316,7 +351,7 @@ class APIManager:
         self.session.headers.update({
             "x-api-key": self.api_key,
             "Content-Type": "application/json",
-            "User-Agent": "TakerOTPBot/10.0"
+            "User-Agent": "TakerOTPBot/11.0"
         })
         self.stats = defaultdict(int)
         self.lock = threading.Lock()
@@ -648,6 +683,7 @@ def clean_number(n):
     return str(n).replace("+", "").replace("-", "").replace(" ", "").strip()
 
 def detect_service(text):
+    """اكتشاف الخدمة من نص الرسالة"""
     t = str(text).lower()
     if not t:
         return "OTP"
@@ -673,6 +709,14 @@ def detect_service(text):
         if any(kw in t for kw in keywords):
             return service
     return "OTP"
+
+def get_service_icon(service_name):
+    """جلب أيقونة الخدمة"""
+    return SERVICE_ICONS_MAP.get(service_name, "🔐")
+
+def get_service_name_ar(service_name):
+    """جلب اسم الخدمة بالعربية"""
+    return SERVICE_NAMES_AR.get(service_name, service_name)
 
 def mask_number(num, show=4):
     n = str(num)
@@ -1056,13 +1100,14 @@ def get_number_cb(call):
         name = countries.get(prefix, prefix)
         flag = get_flag(prefix)
         display_name = services.get(service_key, {}).get("ar" if lang == "ar" else "name", service_key)
+        service_icon = services.get(service_key, {}).get("icon", "🔐")
         now = datetime.now().strftime("%H:%M:%S")
         
         msg = (
             f"*{_('new_number', uid)}*\n\n"
             f"📞 *{_('number_label', uid)}:* `+{number}`\n"
             f"🌍 *{_('country_label', uid)}:* {flag} {name}\n"
-            f"🛠 *{_('service_label', uid)}:* {display_name}\n"
+            f"{service_icon} *{_('service_label', uid)}:* {display_name}\n"
             f"🕒 *{_('time_label', uid)}:* {now}\n"
             f"⏳ *{_('status_waiting', uid)}*"
         )
@@ -1107,13 +1152,14 @@ def change_number_cb(call):
         name = countries.get(prefix, prefix)
         flag = get_flag(prefix)
         display_name = services.get(service_key, {}).get("ar" if lang == "ar" else "name", service_key)
+        service_icon = services.get(service_key, {}).get("icon", "🔐")
         now = datetime.now().strftime("%H:%M:%S")
         
         msg = (
             f"*🔄 تم تغيير الرقم*\n\n"
             f"📞 *{_('number_label', uid)}:* `+{number}`\n"
             f"🌍 *{_('country_label', uid)}:* {flag} {name}\n"
-            f"🛠 *{_('service_label', uid)}:* {display_name}\n"
+            f"{service_icon} *{_('service_label', uid)}:* {display_name}\n"
             f"🕒 *{_('time_label', uid)}:* {now}\n"
             f"⏳ *{_('status_waiting', uid)}*"
         )
@@ -1504,52 +1550,62 @@ def admin_back(call):
     admin_panel(call.message)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# OTP LOOP - 30 MINUTES DELETE
+# OTP LOOP - 30 MINUTES DELETE + SERVICE DETECTION
 # ══════════════════════════════════════════════════════════════════════════════
 def process_single_otp(alloc_id, number, prefix, service_key, uid):
-    """معالجة رقم OTP واحد"""
+    """معالجة رقم OTP واحد - مع معرفة نوع الخدمة"""
     try:
         status, otp = api.check_otp(number)
         
         if status == "success" and otp:
+            # اكتشاف الخدمة من نص الكود
             detected_service = detect_service(otp) if otp else "OTP"
-            ic = SERVICE_ICONS.get(detected_service, "🔐")
+            
+            # إذا تم تحديد الخدمة من اختيار المستخدم
+            services = db.get_services()
+            if detected_service == "OTP" and service_key and service_key != "all":
+                detected_service = services.get(service_key, {}).get("name", "OTP")
+            
+            # جلب أيقونة واسم الخدمة
+            service_icon = get_service_icon(detected_service)
+            service_name_ar = get_service_name_ar(detected_service)
+            
             countries = db.get_countries()
             name = countries.get(prefix, prefix)
             flag = get_flag(prefix)
             code = format_code(otp)
             
-            logger.info(f"🎯 كود جديد: {number} -> {otp} ({detected_service})")
+            logger.info(f"🎯 كود جديد: {number} -> {otp} | {service_icon} {detected_service}")
             
-            # إرسال للمستخدم
+            # إرسال للمستخدم - مع أيقونة واسم الخدمة
             if uid:
                 try:
                     user_msg = (
                         f"*🔐 تم استقبال رمز التفعيل*\n\n"
                         f"📞 *الرقم:* `+{number}`\n"
                         f"🌍 *الدولة:* {flag} {name}\n"
-                        f"{ic} *التطبيق:* {detected_service}\n"
+                        f"{service_icon} *التطبيق:* {service_name_ar}\n"
                         f"🔢 *الكود:* `{code}`\n\n"
                         f"انسخ الكود واستخدمه فوراً"
                     )
                     bot.send_message(uid, user_msg, parse_mode="Markdown")
-                    logger.info(f"✅ تم إرسال الكود للمستخدم {uid}")
+                    logger.info(f"✅ تم إرسال الكود للمستخدم {uid} - {service_icon} {service_name_ar}")
                 except Exception as e:
                     logger.error(f"❌ فشل إرسال الكود للمستخدم {uid}: {e}")
             
-            # إرسال للجروب - حذف بعد نصف ساعة
+            # إرسال للجروب - مع أيقونة واسم الخدمة - حذف بعد نصف ساعة
             for cid in CHAT_IDS:
                 for attempt in range(3):
                     try:
                         masked = mask_number(number)
                         group_msg = (
                             f"*🔐 كود جديد - Taker OTP*\n\n"
-                            f"🌍 {flag} {name} | {ic} {detected_service}\n"
+                            f"🌍 {flag} {name} | {service_icon} {service_name_ar}\n"
                             f"📞 `{masked}`\n"
                             f"🔢 `{code}`"
                         )
                         sent = bot.send_message(cid, group_msg, parse_mode="Markdown")
-                        logger.info(f"✅ تم إرسال الكود للجروب {cid} - سيتم الحذف بعد {DELETE_AFTER} ثانية")
+                        logger.info(f"✅ تم إرسال الكود للجروب {cid} | {service_icon} {service_name_ar} | سيتم الحذف بعد {DELETE_AFTER} ثانية")
                         
                         # ════════════════ حذف بعد نصف ساعة ════════════════
                         threading.Thread(
@@ -1578,9 +1634,10 @@ def process_single_otp(alloc_id, number, prefix, service_key, uid):
         logger.error(f"خطأ في معالجة الرقم {number}: {e}")
 
 def otp_loop():
-    """حلقة فحص OTP الرئيسية - نصف ساعة حذف"""
+    """حلقة فحص OTP الرئيسية - نصف ساعة حذف + معرفة نوع الخدمة"""
     logger.info(f"🔄 بدء حلقة فحص OTP...")
     logger.info(f"⏱️ مدة حذف رسائل الجروب: {DELETE_AFTER} ثانية ({DELETE_AFTER/60:.1f} دقيقة)")
+    logger.info(f"🛠 ميزة معرفة الخدمة: مفعلة")
     
     while True:
         try:
@@ -1611,7 +1668,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Taker OTP Bot - v10.0 FINAL</title>
+    <title>Taker OTP Bot - v11.0 FINAL</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -1630,7 +1687,7 @@ HTML_TEMPLATE = """
             border-radius: 30px;
             border: 1px solid rgba(255,255,255,0.1);
             box-shadow: 0 30px 80px rgba(0,0,0,0.6);
-            max-width: 600px;
+            max-width: 650px;
         }
         h1 {
             font-size: 3.5em;
@@ -1652,15 +1709,17 @@ HTML_TEMPLATE = """
         }
         .version { color: #ff6b6b; font-weight: bold; font-size: 1.2em; }
         .footer { margin-top: 25px; color: #666; }
+        .feature { color: #ffd700; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>⚡ TAKER OTP BOT ⚡</h1>
-        <p class="version">GOD MODE v10.0 FINAL</p>
+        <p class="version">GOD MODE v11.0 FINAL</p>
         <p class="status">🟢 System Online</p>
         <p class="info">API: xwdsms.org | Full Integration</p>
         <p class="info">Languages: العربية & English</p>
+        <p class="info feature">🛠 Service Detection with Icons</p>
         <p class="info">⏱️ Group Delete: 30 minutes</p>
         <div style="margin-top: 25px;">
             <span class="badge">🚀 32 Threads</span>
@@ -1685,7 +1744,8 @@ def health():
         "status": "ok",
         "version": SYSTEM_VERSION,
         "uptime": str(uptime),
-        "delete_after": f"{DELETE_AFTER}s ({DELETE_AFTER/60}min)"
+        "delete_after": f"{DELETE_AFTER}s ({DELETE_AFTER/60}min)",
+        "feature": "service_detection_with_icons"
     }), 200
 
 @app.route('/api/v1/get-number', methods=['POST'])
@@ -1746,16 +1806,17 @@ if __name__ == "__main__":
 ║      ██║   ██║  ██║██║  ██╗███████╗██║  ██║                     ║
 ║      ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝                     ║
 ║                                                                  ║
-║        TAKER OTP BOT - GOD MODE v10.0 FINAL                      ║
+║        TAKER OTP BOT - GOD MODE v11.0 FINAL                      ║
 ║        Developer: @hackerTaker                                   ║
 ║        API: xwdsms.org                                           ║
+║        🛠  Service Detection with Icons                          ║
 ║        ⏱️  Group Delete: 30 minutes (1800s)                       ║
 ║                                                                  ║
 ╚══════════════════════════════════════════════════════════════════╝
     """)
     
     logger.info("=" * 60)
-    logger.info("🚀 TAKER OTP BOT v10.0 FINAL - GOD MODE")
+    logger.info("🚀 TAKER OTP BOT v11.0 FINAL - GOD MODE")
     logger.info(f"🤖 Bot Token: {BOT_TOKEN[:15]}...")
     logger.info(f"🔑 API Key: {API_KEY[:15]}...")
     logger.info(f"📢 Groups: {CHAT_IDS}")
@@ -1764,6 +1825,7 @@ if __name__ == "__main__":
     logger.info(f"🔧 Threads: {MAX_THREADS}")
     logger.info(f"🔄 API Retries: {API_RETRIES}")
     logger.info(f"⏰ OTP Check Interval: {OTP_CHECK_INTERVAL}s")
+    logger.info(f"🛠  Service Detection: ENABLED with Icons")
     logger.info(f"💾 Database: {DB_PATH}")
     logger.info(f"🌐 Flask: http://0.0.0.0:{os.environ.get('PORT', 8080)}")
     logger.info("=" * 60)
