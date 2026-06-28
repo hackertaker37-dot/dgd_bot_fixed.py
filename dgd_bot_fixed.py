@@ -921,21 +921,22 @@ COUNTRY_FLAGS = {
     "993": "🇹🇲", "994": "🇦🇿", "995": "🇬🇪", "996": "🇰🇬",
     "998": "🇺🇿",
 }
-
 def get_flag(prefix):
-    # تحويل المفتاح لنص والتأكد من خلوه من المسافات
     prefix = str(prefix).strip()
     
-    # البحث المباشر أولاً لتجنب أي تشابه في البداية
+    # 1. البحث المباشر الأول (للتعامل مع أي مفتاح طويل أو قصير)
     if prefix in COUNTRY_FLAGS:
         return COUNTRY_FLAGS[prefix]
     
-    # إذا لم يوجد، نجرب البحث بمرونة (لحالات المفاتيح الطويلة)
-    for code, flag in COUNTRY_FLAGS.items():
+    # 2. لو ما لقيناش، نجرب نطابق من البداية (للتعامل مع المفاتيح القصيرة زي 966)
+    # نرتب المفاتيح من الأطول للأقصر عشان نضمن أفضل تطابق
+    sorted_codes = sorted(COUNTRY_FLAGS.keys(), key=len, reverse=True)
+    for code in sorted_codes:
         if prefix.startswith(code):
-            return flag
-            
+            return COUNTRY_FLAGS[code]
+    
     return "🌍"
+
 # ══════════════════════════════════════════════════════════════════════════════
 # API MANAGER
 # ══════════════════════════════════════════════════════════════════════════════
