@@ -1665,7 +1665,7 @@ def add_country_name(message):
     prefix = user_states[message.from_user.id][1]
     name = message.text.strip()
     db.add_country(prefix, name)
-    bot.send_message(message.chat.id, f"✅ *تمت إضافة الدولة بنجاح*\n\n📞 Prefix: `{prefix}`\n الاسم: {name}", parse_mode="Markdown")
+    bot.send_message(message.chat.id, f"✅ *تمت إضافة الدولة بنجاح*\n\n📞 Prefix: `{prefix}`\nn   ً الاسم: {name}", parse_mode="Markdown")
     del user_states[message.from_user.id]
 
 # ── حذف دولة ──
