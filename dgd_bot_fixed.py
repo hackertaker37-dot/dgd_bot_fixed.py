@@ -1075,7 +1075,7 @@ def choose_service_cb(call):
         f"*{choose_text.replace('{}', display_name)}:*",
         cid, mid,
         parse_mode="Markdown",
-        reply_markup=countries_menu(service_key)
+        reply_markup=countries_menuالاسمice_key)
     )
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("get_"))
@@ -1280,7 +1280,7 @@ def add_country_name(message):
     prefix = user_states[message.from_user.id][1]
     name = message.text.strip()
     db.add_country(prefix, name)
-    bot.send_message(message.chat.id, f"✅ *تمت إضافة الدولة بنجاح*\n\n📞 Prefix: `{prefix}`\n🌍 الاسم: {name}", parse_mode="Markdown")
+    bot.send_message(message.chat.id, f"✅ *تمت إضافة الدولة بنجاح*\n\n📞 Prefix: `{prefix}`\n الاسم: {name}", parse_mode="Markdown")
     del user_states[message.from_user.id]
 
 # ── حذف دولة ──
