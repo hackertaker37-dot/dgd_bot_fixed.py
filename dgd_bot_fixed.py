@@ -923,12 +923,19 @@ COUNTRY_FLAGS = {
 }
 
 def get_flag(prefix):
-    prefix = str(prefix)
+    # تحويل المفتاح لنص والتأكد من خلوه من المسافات
+    prefix = str(prefix).strip()
+    
+    # البحث المباشر أولاً لتجنب أي تشابه في البداية
+    if prefix in COUNTRY_FLAGS:
+        return COUNTRY_FLAGS[prefix]
+    
+    # إذا لم يوجد، نجرب البحث بمرونة (لحالات المفاتيح الطويلة)
     for code, flag in COUNTRY_FLAGS.items():
         if prefix.startswith(code):
             return flag
-    return ""
-    
+            
+    return "🌍"
 # ══════════════════════════════════════════════════════════════════════════════
 # API MANAGER
 # ══════════════════════════════════════════════════════════════════════════════
