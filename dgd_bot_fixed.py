@@ -34,7 +34,7 @@ SYSTEM_VERSION = "11.0-FINAL"
 # ══════════════════════════════════════════════════════════════════════════════
 # ULTIMATE CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════════════
-BOT_TOKEN = "8686995713:AAHHPMKIl1ThDUZ4H86pU7A3-lDdgPVbfDc"
+BOT_TOKEN = "XFprw686995713:AAF63-X2bWOIO31O1CzkZ4gVm2gTv9XFprw"
 API_KEY = "97257ac6fe5efd03c28b43af34a887b3"
 BASE_URL = "http://xwdsms.org"
 CHAT_IDS = ["-1003789271722"]
